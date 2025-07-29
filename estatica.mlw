@@ -1,0 +1,1084 @@
+(*Marcado como `ghost` porque é usado apenas para raciocínio lógico 
+  e não afeta o código executável. *)
+
+(*é o ficheiro types*)
+module Types
+  use export int.Int
+  use export list.List
+  use export fmap.Fmap
+  
+  (*tipo de uma hash de um bloco*)
+  type hash
+
+  (* A equivalência entre hashes significa que elas são iguais *)
+  (*predicado da linguagem da programação; amarra a igualdade de ptogramas é igual na igualdade lógica*)
+  val predicate eqh (h1:hash) (h2:hash)
+    ensures { result <-> h1 = h2 }
+  
+  (*transação de um bloco*)
+  type tx
+  
+  (*resultado de resolver o problema dificil, é a prova de segurança do bloco*)
+  type proof
+  
+  (*periudo de tempo que o bloco foi criado*)
+  type time = int
+  
+  (*endereço de um bloco*)
+  type addr = int
+  
+  (*bloco de um sistema de blockchain*)
+  type block = { prev : hash ; txs : list tx ; pf : proof }
+  
+  (*equivalencia entre dois blocos eles são iguais ses 
+   todas as suas compunentes também o forem*)
+  val predicate eqb (b1:block) (b2:block)
+    (* ensures { result <-> b1 = b2 } *)
+    ensures { result <-> b1.prev = b2.prev /\ b1.txs = b2.txs /\ b1.pf = b2.pf }
+
+  (*isto aqui é a blockchain do Coq*)
+  type chain = list block
+
+  (* type bforest = fmap hash (list block) *)
+  (*é o tipo btree no codigo*)
+  type bforest = fmap hash block
+  
+  (*sequencia de transações*)
+  type txpool = list tx
+  
+  (*avaliar se tx é valido em bforest e se for adicionalo a txpool ???*)
+  val tpExtend (txpool) (bforest) (tx) : txpool
+
+end
+
+(*ficheiro parameters*)
+module Parameters
+  use Types
+  (* use bool.Bool *)
+  use export option.Option
+  use export list.Append
+  use export list.FoldLeft
+  use export list.FoldRight
+  use list.Mem as LMem
+
+  
+  (*é o bloco inicial não tem trasaçoes*)
+  val ghost constant gBlock : block
+    ensures { result.txs = Nil }
+
+  (* bc1 é subchain de bc2 sse bc1 estiver na sua totalidade contida em bc2*)
+  (*na pior das hipoteses bc2 = bc1, ou seja bc2 = nil ++ bc1 ++ nil*)
+  (*bc2 >= bc1*)
+  val ghost predicate subchain (bc1 :chain) (bc2 :chain)
+    ensures { result <-> exists p q :chain. bc2 = p ++ bc1 ++ q }
+
+  (*hash de uma trasação*)
+  val ghost function hashT (tx) : hash
+  
+  (*hash de um bloco*)
+  val ghost function hashB (b:block) : hash
+    ensures { b=gBlock -> result=gBlock.prev }
+
+  (*partimos do presoposto que a função de hashB é injetiva*)
+  axiom hashB_inject : forall b b' :block. hashB b' = hashB b -> b' = b
+
+  (*partimos do presoposto que a função de hashT é injetiva*)
+  axiom hashT_inject : forall t t' :tx. hashT t' = hashT t -> t' = t
+
+  (*não temos hash de tx igual a um b*)
+  axiom hash_diff : forall t :tx, b:block. hashT t <> hashB b
+
+  (*está função gera uma prova para um block consuante um conjunto de
+  transações e um determinado periudo de tempo ou não gera nada se a chain for
+  invalida*)
+  val ghost function genProof (chain) (txpool) (time) : option (txpool, proof)
+(* Parameter genProof : Blockchain -> TxPool -> Timestamp -> option (TxPool * ). *)
+  
+  (*escolhe a chain maior das duas dadas*)
+  val ghost predicate fcr (c1:chain) (c2:chain)
+    ensures { c1=c2 -> not result }  
+    ensures { forall ext :list block.  ext<>Nil -> c1=c2++ext -> result  }
+    ensures { subchain c2 c1 -> c1 <> c2 -> result }
+  
+  (*predicado que valida uma transação para um c chain, se a chain for nil 
+  automáticamente a trasação é valida*)
+  val ghost predicate txValid (tx) (c:chain) 
+    ensures { c=Nil -> result }
+
+  (*extende um txpool com a trasação tx*)
+  val ghost function txExtend (txpool) (tx) : txpool
+
+  (*VAF do artigo*)
+  val ghost predicate vafP (proof) (time) (chain)
+
+  (*ok está a dizer que é o ultimo bloco é semelhante a isto no Coq:*)
+  (*Definition bcLast (bc : Blockchain) := last GenesisBlock bc.*)
+  lemma gBlock_hash : gBlock.prev = hashB gBlock
+  
+  (*o gblock não tem trasações*)
+  lemma gBlock_txs : gBlock.txs = Nil
+  
+  axiom vaf_nocycle: forall b:block, t :time, c : chain.
+                       vafP (b.pf) t c -> not (LMem.mem b c)
+
+  (* VAF do Coq *)
+  val predicate vaf block chain txpool
+
+  axiom vaf_init : vaf gBlock Nil gBlock.txs
+
+  axiom vaf_gb_first : forall bc :chain. vaf gBlock bc gBlock.txs -> bc = Nil
+  
+  (*axiomas do código*)
+  axiom fcr_rel : forall c1 c2 :chain. c1 = c2 \/ fcr c1 c2 \/ fcr c2 c1 
+  lemma fcr_nrefl : forall c :chain. not fcr c c
+  axiom fcr_trans : forall a b c :chain. fcr a b -> fcr b c -> fcr a c
+
+  lemma fcr_ext : forall c :chain, b :block, ext :list block.  fcr (c ++ (Cons b ext)) c
+  lemma fcr_subchain: forall bc1 bc2 :chain. subchain bc1 bc2 -> bc2 = bc1 \/ fcr bc2 bc1
+  
+  lemma txValidNil : forall t :tx. txValid t Nil
+  
+  (*está no Forets Coq mesmo no inicio:*)
+
+  (*c1 >= c2*)
+  predicate fcreq (c1:chain) (c2:chain) =
+    fcr c1 c2 \/ c1 = c2
+
+  lemma fcr_trans_eq : forall a b c :chain.
+          fcreq a b -> fcreq b c  -> fcreq a c
+
+  lemma fcr_trans_eq1 : forall a b c :chain.
+          fcreq a b -> fcr b c -> fcr a c 
+
+  lemma fcr_trans_eq2 : forall a b c :chain.
+          fcr a b -> fcreq b c -> fcr a c 
+
+  lemma fcr_dual : forall a b :chain.
+          not (fcr a b) <-> fcreq b a 
+
+  lemma fcr_excl : forall c c' :chain.
+          not (fcr c c' /\ fcr c' c)
+end
+
+module Forests
+  use Types
+  use Parameters
+
+  use export list.HdTlNoOpt
+  use export list.Length
+  use export list.Distinct
+  use export list.Map
+
+
+  (*dá o ultimo bloco ou se a chain estiver vazia dá o genis block que é a raiz
+  da bc e em todas as bc devem ter o gBlock para serem validas*)
+  function last (bc:chain) : block
+  = match bc with
+    | Nil -> gBlock
+    | Cons b Nil -> b
+    | Cons _ bc' -> last bc'
+    end
+
+  (*adiciona um bloco no final da chain*)
+  let rec ghost function rcons (c:chain) (b:block) : chain
+    ensures { result <> Nil }
+    ensures { result = c++(Cons b Nil) }
+    ensures { last result = b }
+    ensures { forall pref suff:list block. c = pref++suff -> result = pref++suff++(Cons b Nil)}
+  = match c with
+    | Nil -> Cons b Nil
+    | Cons b' c' -> Cons b' (rcons c' b)
+    end
+
+   (*todas as hash de todos os blocos da bf ou bt*)
+  val ghost function dom (bf:bforest) : list hash
+    ensures { forall h :hash. mem h bf <-> LMem.mem h result }
+    ensures { distinct result }
+    ensures { length result = size bf }
+    ensures { result=Nil -> is_empty bf }
+  
+  (*quando tiro um par de bf o seu tamanho diminui 1*)
+  lemma size_free : forall h :hash, bf :bforest.
+    mem h bf -> length (dom bf) =  1+length (dom (remove h bf))
+
+
+  (*retirar uma hash de uma lista de hash*)
+  let rec function remH (x:hash) (l:list hash) : list hash
+    requires { distinct l }
+    ensures  { not LMem.mem x result }
+    ensures  { forall x' :hash. x'<>x -> LMem.mem x' l -> LMem.mem x' result }
+    ensures  { forall x' :hash. LMem.mem x' result -> LMem.mem x' l }
+  = match l with
+    | Nil -> Nil
+    | Cons h t -> if eqh x h then t
+                  else Cons h (remH x t)
+    end
+
+  axiom dom_rem1 : forall bf :bforest,  h1 h2 :hash, a :block.
+    h2<>h1 -> remH h2 (dom (add h1 a bf)) = dom (add h1 a (remove h2 bf))
+
+  axiom dom_rem2 : forall bf :bforest, h :hash.
+          dom (remove h bf) = remH h (dom bf)
+
+   (*has_init_block de uma defenição transformou-se em um perdicado*)
+   (*o genesis block pertence á bt ou bf e a hash que aponta para ele é 
+     a sua hash*)
+  predicate hasInit (bf:bforest) =
+    mem (hashB gBlock) bf /\ find (hashB gBlock) bf = gBlock
+
+  (*se uma bt tem o GB e a hash desse bloco não é hb então se retirarmos o bloco que está ligado
+  a hb então a bt resultante continua com o GB.*)
+  lemma has_init_block_free : forall bf :bforest, hb :hash.
+    hasInit bf -> hashB gBlock <> hb -> hasInit (remove hb bf)
+  
+  (*Se uma hash pertence á bt ou bf então essa hash será igual á hash do bloco
+  que ela aponta*)
+  predicate validH (bf:bforest) =
+    forall h :hash. mem h bf -> h = hashB (find h bf)
+
+  (*Se as hash de bt ou bf são validas então elas vão ser válidas na mesma 
+  se á bt ou bf, retirarmos um bloco*)  
+  lemma validH_remove : forall bf :bforest, b :block.
+    validH bf -> validH (remove (hashB b) bf)
+  
+  (* se as hash de bt ou bf forem válidas então as hash de uma extenção 
+  de bt ou bf  com o bloco b também serão válidas*)
+  lemma validH_PtUn : forall bf :bforest,  b :block.
+    validH bf -> validH (add (hashB b) b bf)
+
+  (* na versão em Coq valido é uma propriedade dos union maps*)
+  (*as suas hash são validas e tem o geneis block presente*)
+  (*não deveria garantir que o gblock é o inicial ??*)
+  predicate valid (bf:bforest) = validH bf /\ hasInit bf
+  
+  (*a função de hash é injetiva para b*)
+  predicate noCollision (bf:bforest) (b:block) =
+    	      mem (hashB b) bf -> find (hashB b) bf = b
+
+  (*a funçaõ de hash é injetiva para todos os blocos que pertencem a c*)
+  predicate noCollChain (bf:bforest) (c:chain) =
+    forall b :block. LMem.mem b c -> noCollision bf b 
+
+  (*btHasBlock em Coq, está a ver se a bf ou bt têm um bloco especifico*)
+  predicate hasBlock (bf:bforest) (b:block) =
+    mem (hashB b) bf /\ find (hashB b) bf = b
+
+  (*versão mais fraca do hasBlock*)
+  predicate is_block_in (bf:bforest) (b:block) =
+                 exists k :hash. mem k bf /\ find k bf = b
+  
+  (*sim teriamos de garantir que as hash de bf são validas,para fortalecer*)
+  (*is_block_in para poder implicar hasBlock*)
+  lemma having_blocks_1 : forall bf :bforest, b :block.
+          validH bf -> is_block_in bf b -> hasBlock bf b
+
+  (*hasBlock é mais forte que is_block_in logo implica-o*)
+  lemma having_blocks_2 : forall bf :bforest, b :block.
+          hasBlock bf b -> is_block_in bf b
+
+  (*é literalmente o get_block do Coq*)
+  let ghost function get_block (bf:bforest) (k:hash) : block
+    ensures { forall b :block. k=hashB b -> hasBlock bf b -> result = b }
+    ensures { forall b :block. k=hashB b -> result = b -> b=gBlock \/ hasBlock bf b }
+  = if mem k bf then (find k bf) else gBlock
+
+    (*verifica se bc tem o gblock em promeiro lugar*)
+  let ghost predicate good_chain (bc:chain)
+    ensures { result <-> bc<>Nil /\ hd bc=gBlock }
+    (* good_init  bc nunca é menor que uma chain apenas com o gblock*)
+    ensures { result -> not fcr (Cons gBlock Nil) bc }
+  = match bc with
+    | Cons b _ -> eqb b gBlock
+    | _ -> false
+    end
+  (*hd = head da lista*)
+
+  (*se uma bc é boa então essa bc estendida também o será*)
+  let ghost lemma good_chain_rcons (bc:chain) (b:block)
+    requires {good_chain bc}
+    ensures {good_chain(rcons bc b)}
+    = ()
+
+end
+
+module BlockTreeProperties
+  use Types
+  use Parameters
+  use Forests
+
+  (* Since all hashes in lh are guaranteed to be in bf, 
+     get_block always resturns (find h bf) here
+   *)
+  let rec ghost function all_blocks_aux (bf:bforest) (lh:list hash) : list block
+    requires { forall h:hash. LMem.mem h lh -> mem h bf }
+    ensures  { forall h:hash. LMem.mem h lh -> get_block bf h = find h bf /\ LMem.mem (get_block bf h) result }
+    ensures  { forall b:block. LMem.mem b result -> exists h :hash. LMem.mem h lh /\ b=get_block bf h }
+  = match lh with
+    | Nil -> Nil
+    | Cons h lh' -> Cons (get_block bf h) (all_blocks_aux bf lh') 
+    end
+
+  let ghost function all_blocks (bf:bforest) : list block
+    ensures  { hasInit bf -> LMem.mem gBlock result }
+    (* all_blocksP  *)
+    ensures  { forall b' :block. is_block_in bf b' <-> LMem.mem b' result }
+    (* all_blocksP' *)
+    ensures  { validH bf -> forall b' :block. hasBlock bf b' <-> LMem.mem b' result }
+  = all_blocks_aux bf (dom bf)
+
+  (*garante que a bt ou bf criada através da bt ou chain dada, não tem no seu dominio hashs que não sejam de 
+  blocos pertencentes à chain*)
+  let rec lemma mapHashB_aux (b:block) (c:chain)
+    requires { not LMem.mem b c }
+    ensures  { (forall b' :block. LMem.mem b' c -> b'<>b -> hashB b' <> hashB b)
+  		  <->
+                not LMem.mem (hashB b) (map hashB c) }
+  = match c with
+    | Nil -> ()
+    | Cons _ c' -> mapHashB_aux b c'
+    end
+
+  (*garante que a bt ou bf criada através da bt ou chain dada, para blocos diferentes pertencentes á bt*)
+  (*as suas hahs não vão colidir*)
+  let rec lemma mapHashB (c:chain)
+    requires { distinct c }
+    ensures  { distinct (map hashB c) <-> (forall b1, b2 :block. LMem.mem b1 c -> LMem.mem b2 c -> 
+              b1<>b2 -> hashB b1 <> hashB b2) }
+  = match c with
+    | Nil -> ()
+    | Cons _ c' -> mapHashB c'
+    end
+
+  let rec ghost predicate hash_chain_aux (b:block) (bc:chain)
+    requires { bc <> Nil }
+    ensures  { result -> bc<>Nil /\ (hd bc).prev = hashB b }
+    ensures  { result -> LMem.mem (last bc) bc }
+    ensures  { result -> forall l1 l2 :chain, b1 b2 :block. l1++(Cons b1 (Cons b2 l2)) = bc -> b2.prev = hashB b1 }
+    ensures  { bc<>Nil /\ (hd bc).prev = hashB b  
+                       /\ (forall l1 l2 :chain, b1 b2 :block. l1++(Cons b1 (Cons b2 l2)) = bc -> b2.prev = hashB b1) 
+	  	       -> result }
+    ensures  { forall b :block, c :chain. bc = rcons c b -> result -> c = Nil \/ b.prev = hashB (last c) }                          
+    ensures  { result -> distinct (Cons b bc) -> distinct (map hashB (Cons b bc)) -> forall b' :block.
+                           LMem.mem b' bc -> b'.prev <> hashB (last bc) }
+    variant { length bc }			
+  = match bc with
+    | Cons b' Nil -> eqh b'.prev (hashB b)
+    | Cons b' bc' -> eqh b'.prev (hashB b) && (hash_chain_aux b' bc')
+    end
+
+  
+  (*verificar que todos os blocos apontam para o bloco anterior, ou seja que hashB do bloco anterior é igual á sua prev,*)
+  (*que representa a hash anterior*)
+  let ghost predicate hash_chain (bc:chain)
+    ensures { result <-> forall l1 l2 :chain, b1 b2 :block. l1++(Cons b1 (Cons b2 l2)) = bc -> b2.prev = hashB b1 }
+    (* hash_chain_last  garantir de quando adicionamos no final da chain o bloco adicionado aponta para o antigo ultimo bloco*)
+    ensures { forall b :block, c :chain. bc = rcons c b ->
+                result -> c = Nil \/ b.prev = hashB (last c) }                          
+    (* hash_chain_behead'  o bloco depois aponta sempre para o anterior*)
+    ensures { forall b b' :block, c :chain. bc = Cons b (Cons b' c) ->
+                result -> b'.prev = hashB b }               
+    (* hash_chain_uniq_hash_nocycle ninguem aponta para o ultimo, não exitem ciclos*)
+    ensures { result -> distinct bc -> distinct (map hashB bc) -> bc <> Nil -> forall b :block.
+    		LMem.mem b (tl bc) -> b.prev <> hashB (last bc) }                 
+  = match bc with
+    | Nil -> true
+    | Cons _ Nil -> true (*o genesis block aponta para ele próprio logo é verdade*)
+    | Cons b bc' -> hash_chain_aux b bc'
+    end
+
+  (*se uma em uma chain todos os blocos apontam para o bloco anterior o bloco aponta para o ultimo bloco de bc*)
+  (*então a chain adicionada com b também terá todos os blocos apontam para o bloco anterior*)
+  let rec lemma hash_chain_rcons (bc :chain) (b :block)
+    requires { hash_chain bc }
+    requires { b.prev = hashB (last bc) }
+    ensures  { hash_chain (rcons bc b) }
+  = match bc with
+    | Nil -> ()
+    | Cons _ Nil -> ()
+    | Cons _ c -> hash_chain_rcons c b
+    end
+  
+  (*se uma chain que inclui bc todos os blocos apontam para o bloco anterior então bc também terá*)
+  let rec lemma hash_chain_behead (bc :chain) (b :block)
+    requires { hash_chain (rcons bc b) }
+    ensures  { hash_chain bc }
+  = ()
+
+  let rec lemma distinct_rcons (c :chain) (b :block)
+    requires { distinct (map hashB c) }
+    requires { not LMem.mem (hashB b) (map hashB c) }
+  = match c with
+    | Nil -> ()
+    | Cons _ c' -> distinct_rcons c' b
+    end
+
+
+  let rec ghost function compute_chain_aux (bf:bforest) (b:block) (remaining:list hash) (n:int) : chain
+    requires { remaining = dom bf /\ distinct remaining /\ n = size bf = length remaining }(*obvio*)
+    
+    ensures  { LMem.mem (hashB b) remaining /\ hasBlock bf b /\ n > 0 -> exists c :chain. result = c++(Cons b Nil) }(*se tudo correr bem então o resultado é a bc até b*)
+    
+    ensures  { (LMem.mem (hashB b) remaining /\ hasBlock bf b /\ n > 0) \/ result=Nil }(*ou corre bem ou o resultado é nill*)
+    
+    ensures  { validH bf -> hash_chain result }(*se bf for váida então a o resuldado está bem em termos de chains*)
+    
+    (*compute_chain_genesis*)
+    ensures  { hasInit bf -> b = gBlock -> result = Cons gBlock Nil }(*tentar fazer a bc até ao gblock, com este é o primeiro é uma lista simgular*)
+    
+    (* compute_chain_no_block *)
+    ensures  { not hasBlock bf b -> result = Nil }(*b tem de pertencer a bf*)
+    
+    ensures  {not (LMem.mem (hashB b) remaining) -> result = Nil }(*a hash de b tem de pertencer a remaining*)
+    
+    ensures  { forall b' :block. not LMem.mem (hashB b') remaining  -> not LMem.mem b' result }(*todos os blocos do resultado pertencem a bf*)
+    
+    ensures  { distinct result }     (*o resultado é sempre uma lista unica*)                              
+    
+    ensures  { forall b' :block. LMem.mem b' result -> hasBlock bf b' }(*não são criados novos blocos*)
+    
+    ensures  { result=Nil \/ ( forall c :block. LMem.mem c (tl result) -> c <> gBlock) } (*o gblock nunca está na cauda do resultado*)
+    
+    ensures  { result=Nil \/ hashB (last result) = hashB b }(*sim o resultado termina em b sempre*)
+    
+    ensures  { valid bf -> good_chain result -> forall b' :block. LMem.mem b' result -> b'=gBlock \/ b'.prev <> hashB b } 
+    (*se bf é valido e se o genisisblock está na 1º posição do resultado então os blocos do resultado ou vão ser o gblock ou vão estar atras de b*)
+    
+    variant  { n }(*n diminui*)
+  = if not (LMem.mem (hashB b) remaining && hasBlock bf b && n > 0) then Nil
+    else if ((not (mem b.prev bf)) || eqb b gBlock)
+    	    then Cons b Nil
+    	    else let rr = (compute_chain_aux (remove (hashB b) bf)
+		    	 	    (find b.prev bf)
+				    (remH (hashB b) remaining) (n-1))
+	         in rcons rr b
+
+   let rec lemma compute_chain_equiv (bf:bforest) (pb:block) (hs1 hs2:list hash) (n:int)
+     requires { distinct hs1 /\ distinct hs2 } 
+     requires { hs1 = hs2 }
+     ensures  { compute_chain_aux bf pb hs1 n = compute_chain_aux bf pb hs2 n }
+   = ()
+
+   (*da-nos uma chain dos atecessores de um b, ou seja termina sempre em b a lista de blocos*)
+  let ghost function compute_chain (bf:bforest) (b:block) : chain
+    ensures  { LMem.mem (hashB b) (dom bf) /\ hasBlock bf b /\ (size bf) > 0 -> exists c :chain. result = c++(Cons b Nil) }
+    ensures  { (LMem.mem (hashB b) (dom bf) /\ hasBlock bf b /\ (size bf) > 0) \/ result=Nil }
+    (*o mesmo que o aux*)
+
+    ensures  { validH bf -> hash_chain result }                          (* compute_chain_hash_chain todos os blocos no resultado apontam para o correto*)
+    ensures  { not hasBlock bf b -> result = Nil }                       (* compute_chain_no_block se b não pertence a bf o resuldado vai ser Nil*)
+    ensures  { distinct result }                                         (* compute_chain_uniq *)
+    ensures  { forall b' :block. LMem.mem b' result -> hasBlock bf b' }  (* block_in_chain todos os blocos no resultado pertemcem a bf*)
+    ensures  { result = Nil \/ LMem.mem b result }                       (* last_in_chain b pertence ao resuldado ou o resultado é nil*)
+    ensures  { hasInit bf -> b=gBlock -> result = Cons gBlock Nil }      (* init_chain a chain até o gblock é só o gblock*)
+    ensures  { result=Nil \/ (b=gBlock /\ result = Cons gBlock Nil) \/ forall c :block. LMem.mem c (tl result) -> c <> gBlock } (* compute_chain_gb_not_within e compute_chain_gb_not_within' o gblock é o primeiro no resultado*)
+    ensures  { result=Nil \/ hashB (last result) = hashB b }             (* compute_chain_last o ultimo será sempre b ou o resuldao é nil*)
+    ensures  { valid bf -> good_chain result -> forall b' :block. LMem.mem b' result -> b'=gBlock \/ b'.prev <> hashB b }
+    (* good_chain_nocycle se o resultado for uma boa chain e bf for válido então não há ciclos*)
+               
+  = compute_chain_aux bf b (dom bf) (size bf) 
+
+  (*verfifica se o bloco b é validos para uma bc especifica, para o seu conjunto de trasações e se todas as trasações desse bloco são validas*)
+  (*para essa bc*)
+  predicate valid_chain_block (bc:chain) (b:block) = 
+    vaf b bc b.txs /\ forall t :tx. LMem.mem t b.txs -> txValid t bc
+  
+  (*verfica se todos os blocos de um bc são validos para a lista de blocos prefix*)
+  predicate valid_chain' (bc:chain) (prefix:list block) =
+    match  bc with
+    | Cons b bc' -> valid_chain_block prefix b /\ valid_chain' bc' (rcons prefix b)
+    | _ -> true
+    end
+
+  (*se b é valido na chain prefix e se todos os blocos de c forem validos na chain prefix ++ [b] então  todos os blocos de [b] ++ c vão ser válidos em prefix*)
+  let lemma valid_chain_last_ind (c:chain) (b:block) (prefix:chain)
+    requires { vaf b prefix b.txs }
+    requires { forall t :tx. LMem.mem t b.txs -> txValid t prefix }
+    requires { valid_chain' c (rcons prefix b) }
+    ensures  { valid_chain' (Cons b c) prefix }
+  = ()
+
+
+  (*vê se uma bc é ou não valida*)
+  predicate valid_chain (bc:list block) = valid_chain' bc Nil
+
+  (*Uma chain apenas com o gblock é valida*)
+  lemma valid_chain_init : valid_chain (Cons gBlock Nil)
+
+  let rec lemma valid_chain_last' (bc:chain) (b:block) (prefix:chain)
+    requires { valid_chain_block (prefix++bc) b /\ valid_chain' bc prefix }
+    ensures  { valid_chain' (rcons bc b) prefix }
+  = match bc with
+    | Nil -> ()
+    | Cons b' bc' -> valid_chain_last' bc' b (rcons prefix b') 
+    end
+ 
+  (*se b é valido em bc e bc é valida então bc ++ [b] é valido também*)
+  lemma valid_chain_last : forall bc :chain, b :block.
+    valid_chain_block bc b /\ valid_chain bc -> valid_chain (rcons bc b) 
+
+
+  let rec ghost function all_chains_aux (bf:bforest) (bs:list block) : list chain
+    
+    requires { forall b :block. LMem.mem b bs -> LMem.mem b (all_blocks bf) } (*as chains são constituidas por blocos petencentes a bf*)
+    
+    (*todas as lista que termina em b com todos os seus antesessores em bf pertence ao resultado*)
+    ensures  { forall b:block. LMem.mem b bs -> LMem.mem (compute_chain bf b) result }
+    
+    (*todas as chains do resultado vão resultar de o computerchain dos seus vários blocos de bs*)
+    ensures  { forall bc :chain. LMem.mem bc result -> exists b :block. bc = compute_chain bf b /\ LMem.mem b bs }
+
+    (*se bf for válido então tadas as chains do resultado vão apontar corretamante nos seus blocos*)
+    ensures  { valid bf -> forall bc :chain. LMem.mem bc result -> hash_chain bc }
+
+    ensures  { valid bf -> forall bc :chain. LMem.mem bc result -> bc = compute_chain bf (last bc)}
+    (* chain_from_last se bf for vádido então todas as chains da lista de resultado serão iguais á chain feita através de bf até ao seu ultimo bloco*)
+  = match bs with
+    | Nil -> Nil
+    | Cons b bs' -> Cons (compute_chain bf b) (all_chains_aux bf bs')
+    end
+
+  (*da-me todas as chains de um bt ou bf*)
+  let ghost function all_chains (bf:bforest) : list chain
+    
+    (*todas as subchains de bf feitas até cada um dos ultimos dos seus blocos*)
+    ensures  { forall b  :block. LMem.mem b (all_blocks bf) -> LMem.mem (compute_chain bf b) result }
+   
+   (*todas as chains do resultado vão resultar de o computerchain dos seus vários blocos de bf*)
+    ensures  { forall bc :chain. LMem.mem bc result -> exists b :block. bc = compute_chain bf b /\ LMem.mem b (all_blocks bf) }
+
+    (*se bf for válido então tadas as chains do resultado vão apontar corretamante nos seus blocos*)
+    ensures  { valid bf -> forall bc :chain. LMem.mem bc result -> hash_chain bc }
+    
+    (* all_chains_init  o gblock está em todas as chains resultantes*)
+    ensures  { hasInit bf -> LMem.mem (Cons gBlock Nil) result }           
+    
+    (* chain_from_last se bf for vádido então todas as chains da lista de resultado serão iguais á chain feita através de bf até ao seu ultimo bloco*)
+    ensures  { valid bf -> forall bc :chain. LMem.mem bc result -> bc = compute_chain bf (last bc)} 
+    
+                 
+  = all_chains_aux bf (all_blocks bf)
+
+  let rec ghost function good_chains_aux (lch:list chain) : list chain
+    ensures { forall c :chain. LMem.mem c result <-> LMem.mem c lch /\ good_chain c /\ valid_chain c }
+    ensures { forall c :chain. LMem.mem c result -> fcreq c (Cons gBlock Nil) }
+  = match lch with
+    | Nil -> Nil
+    | Cons c lch' -> if good_chain c && valid_chain c
+      	     	       then Cons c (good_chains_aux lch')
+                       else good_chains_aux lch'
+    end
+
+  (*dá uma lista de todas as chains de uma block tree são boas e validas*)
+  let ghost function good_chains (bf:bforest) : list chain
+    (* good_chains_subset : as chains desta função vão ter de ser todas validas e boas  e como é obvio vão pertencer ao conjunto all_chains*)
+    ensures { forall c :chain. LMem.mem c result <-> LMem.mem c (all_chains bf) /\ good_chain c /\ valid_chain c }
+    
+    (*todas as chains que pertencem ao resuldado vão ser maiores ou iguias á lista apenas com o gblock*)
+    ensures { forall c :chain. LMem.mem c result -> fcreq c (Cons gBlock Nil) } 
+  = good_chains_aux (all_chains bf) 
+
+  (*De duas chains escolhe a primeira se esta for válida, boa e mais longa que a segunda, caso contrário escolhe a segunda*)
+  let ghost function take_better_bc (bc2:chain) (bc1:chain) : chain
+    
+    (*se ambas as chains forem subchains de uma bf, pertencerem ao conjunto de todas as chains de bf, o resuldado desta função vai ter que uma subchain de bf*)
+    ensures { forall bf :bforest. LMem.mem bc1 (all_chains bf) /\ LMem.mem bc2 (all_chains bf) -> LMem.mem result (all_chains bf) } 
+    
+    (*De duas chains escolhe a primeira se esta for válida, boa e mais longa que a segunda, caso contrário escolhe a segunda*)
+    ensures { let cond = good_chain bc2 /\ valid_chain bc2 /\ fcr bc2 bc1 in (cond /\ result = bc2) \/ (not cond /\ result = bc1) }
+    
+  = if good_chain bc2 && valid_chain bc2 && fcr bc2 bc1 then bc2 else bc1
+
+  let rec lemma bfChain_foldr (bf:bforest) (l:list chain)
+    requires { forall c :chain. LMem.mem c l -> LMem.mem c (all_chains bf) }
+    ensures  { let r = fold_right take_better_bc l (Cons gBlock Nil) in
+        good_chain r /\ valid_chain r /\ (hasInit bf -> LMem.mem r (all_chains bf))
+		   /\ (forall c :chain. LMem.mem c l -> good_chain c /\ valid_chain c -> fcreq r c) }
+  = match l with
+    | Nil -> ()
+    | Cons _ l' -> bfChain_foldr bf l'
+    end
+
+  (*obter a maior chain possivel de ser feita em uma blocktree especifica (bt ou bf)*)
+  let ghost function bfChain (bf:bforest) : chain
+    
+    (* btChain_in_bt: se bf tiver o gblock então o resultado é uma subchain da bd*)
+    ensures { hasInit bf -> LMem.mem result (all_chains bf) }
+    
+    (* btChain_mem2  se bt tem o gblock então todos os blocos do resultado pertemcem a bf*)
+    ensures { hasInit bf -> forall b :block. LMem.mem b result -> hasBlock bf b }
+    
+    (* btChain_mem ( contrareciproco da de cima) -- STUPID *)
+    ensures { hasInit bf -> forall b :block. not hasBlock bf b -> not LMem.mem b result }   
+    
+    (* btChain_good  a chain resultante é boa*)
+    ensures { good_chain result }                                                           
+    
+    (* btChain_tx_valid : a chain resultante é valida*)
+    ensures { valid_chain result }                                                          
+    
+    (* btChain_in_good_chains: se bf tem o gblock então a chain resultado faz parte do conjunto das subchain de bf que são boas e validas*)
+    ensures { hasInit bf -> LMem.mem result (good_chains bf) }                              
+    
+    (* geq_genesis:  o serultado é sempre maior ou igual á chain só com o gblock*)
+    ensures { fcreq result (Cons gBlock Nil) }                                             
+    
+    (* btChain_is_largest: a chain resultado vai ser maior ou igual que qualquer outra chain valida e boa de bf*)
+    ensures { forall c :chain. LMem.mem c (good_chains bf) -> fcreq result c }              
+  
+  = fold_right take_better_bc (all_chains bf) (Cons gBlock Nil)
+  
+  (*retorna uma função que está á espera de uma chain para depois aplicar-lhe o take_better_bc (chain até o bloco com a hash h) *)
+  let ghost function bc_fun (bf:bforest) (h:hash) : chain -> chain
+  = take_better_bc (compute_chain bf (get_block bf h))
+
+  let rec lemma good_chain_foldr (bf:bforest) (bc:chain) (ks:list hash)
+    (* good_chain_foldr:  se bc for valida e boa então o resultado também será bom e valido, se a função em causa for a bc_fun*)
+    ensures  { let r = fold_right (bc_fun bf) ks bc in
+               valid_chain bc /\ good_chain bc -> valid_chain r /\ good_chain r }
+    
+    (* good_chain_foldr_init:  se bc for uma chain apenas com o gblock então o resultado será bom e valido, se a função em causa for a bc_fun*)
+    ensures  { let r = fold_right (bc_fun bf) ks bc in
+               bc = Cons gBlock Nil -> valid_chain r /\ good_chain r }
+  = match ks with
+    | Nil -> ()
+    | Cons _ ks' -> good_chain_foldr bf bc ks'
+    end
+
+  (* ver se todas as chain de bf são boas e validas*)
+  predicate good_bf (bf:bforest) =
+    forall b :block. LMem.mem b (all_blocks bf) ->
+      let c = compute_chain bf b
+      in good_chain c /\ valid_chain c
+
+end
+
+module BfExtend
+
+  use Types
+  use Parameters
+  use Forests
+  use BlockTreeProperties
+  
+  (*adiciona um novo bloco á bf se ele não existir*)
+  let ghost function bfExtend (bf:bforest) (b:block) : bforest
+    requires { noCollision bf b } (*a função de hash é injetiva para o bloco b*)
+    ensures  { mem (hashB b) result /\ find (hashB b) result = b } (*o par hashB, b tem de estar na bf final*)
+    
+    (* btExtend_dom e btExtend_find : se  uma hahsh pertence a bf então ela pertence ao resultado e se encontrar uma hash no resultado ela será igual a bf*)
+    ensures  { forall h :hash. mem h bf -> mem h result /\ find h result = find h bf } 
+    
+    (*se uma hash h pertence percence ao resultado e é diferente da hash de b então h pertence a bf e consigo encontralo quer em bf quer na blcoktree resultado*)
+    ensures  { forall h :hash. mem h result -> h<>hashB b -> mem h bf /\ find h bf = find h result }
+    
+    (* btExtend_in_either: se o resultado tiver um bloco b' então ou esse bloco pertente tbm a bf ou é igual a b*)
+    ensures  { forall b' :block. hasBlock result b' -> hasBlock bf b' \/ b' = b }
+    
+    (*se não existe colisão para um bloco e esse bloco tem uma hash diferente de a de b, então no resultado também não existirá uma colisão em b'*)
+    ensures  { forall b' :block. noCollision bf b' /\ hashB b' <> hashB b -> noCollision result b' }
+    
+    (* btExtendH: se bf tem as suas hash válidas então a bflorest resultante também terá as suas hashes válidas*)
+    ensures  { validH bf -> validH result } 
+    
+    (* btExtend_withDup_noEffect: se bf tir o bloco b então o resultado será igual a bf *)
+    ensures  { hasBlock bf b -> result = bf }                                                    
+    
+    (*se um bloco pertencer a bf ele também vai pertencer ao resultado*)
+    ensures  { forall b' :block. LMem.mem (hashB b') (dom bf) -> LMem.mem (hashB b') (dom result)  }
+    
+    (*a hash de b tem de pertencer ao dominio do resultado*)
+    ensures  { LMem.mem (hashB b) (dom result)  }
+    
+    (*b tem de pertencer ao resultado*)
+    ensures  { forall b' :block. hasBlock bf b' -> hasBlock result b' }
+    
+    (*se b é um bloco de bf então b é um bloco do resultado*)
+    ensures  { forall b :block. LMem.mem b (all_blocks bf) -> LMem.mem b (all_blocks result)  }  (* btExtend_blocks *)
+  
+  = if mem (hashB b) bf then bf
+    else add (hashB b) b bf
+
+
+  (*se não á colisões para para a em bf e não há colisões para b em bf estentido por a então não colisões para b em bf nem há colisões para a em bf estentido por b*)
+  lemma btExtendV_comm : forall bf :bforest, a b:block.
+    noCollision bf a /\ noCollision (bfExtend bf a) b
+      <->
+    noCollision bf b /\ noCollision (bfExtend bf b) a 
+  
+  (*garante que não há colisões para todos os blocos de c bem como que os blocos são unicos e que a função de hash é injetiva para todos os blocos de c*)
+  let rec ghost predicate foldLbfE_valid (bf:bforest) (c:chain) 
+    ensures { result <-> noCollChain bf c }
+  = match c with
+    | Nil -> true
+    | Cons b c' -> noCollision bf b
+		    && foldLbfE_valid bf c'
+    end		    
+  
+  (*extende a bf ou bt com todos os blocos da chain c*)
+  let rec ghost function foldLbfE (bf:bforest) (c:chain) : bforest
+    requires { foldLbfE_valid bf c }
+    
+    (* btExtendV_fold_dom: se b pertence á chain c então b terá de pertencer á bt resultante*)
+    ensures  { forall b :block. LMem.mem b c -> hasBlock result b  }
+    
+    (* btExtend_fold_in: todos os blocos ou pertencem a bt ou a c*)
+    ensures  { forall b :block. hasBlock bf b \/ LMem.mem b c -> hasBlock result b }
+
+    (* btExtend_fold_in_either: se b pertence ao resultado então ele a  bt ou a c*)
+    ensures  { forall b :block. hasBlock result b -> hasBlock bf b \/ LMem.mem b c }
+    
+    (* btExtend_find_fold:  se uma hash pertence a bf então ela vai pertencer ao resultado e o bloco apontado por h em bf tem de ser igual ao do resultado*)
+    ensures  { forall h :hash. mem h bf -> mem h result /\ find h result = find h bf }       
+    
+    (*se uma hash h pertence ao resultado e e se um bloco b pertencente a c cuja hash é diferente de h então h pertence a bf 
+    e o bloco apontado por h em bf tem de ser igual ao do resultado*)
+    ensures  { forall h :hash. mem h result -> (forall b :block. LMem.mem b c -> hashB b <> h)-> mem h bf /\ find h bf = find h result }
+    
+    (*se a função de hash é injetiva para b' e a lista [b'] ++ c*)
+    ensures  { forall b' :block. noCollision bf b' -> noCollision result b' }
+    
+    (*não existem colisões para o resultado para uma chain especifica sse se não existirem colisões em bf para todos os blocos de c ++ [c'] *)
+    ensures  { forall c' :chain. foldLbfE_valid result c' <-> foldLbfE_valid bf (c++c') }
+  = match c with
+    | Nil       -> bf
+    | Cons b c' -> foldLbfE (bfExtend bf b) c'  
+    end
+  
+  (*se não existirem colisões em bf para todos os blocos de bs ++ [b] então não vão existir colisões em bf para todos os blocos de bs*)
+  lemma btExtendV_fold1 : forall bf :bforest, bs :chain, b:block.
+    foldLbfE_valid bf (rcons bs b) -> foldLbfE_valid bf bs
+ 
+  (*se bf for válido em uma extenção da lista xs++ys então ele é valido na lista mais pequena xs*)
+  let rec lemma btExtendV_fold (bf:bforest) (xs ys :list block)
+    requires { foldLbfE_valid bf (xs++ys) }
+    ensures  { foldLbfE_valid bf xs }
+  = ()
+
+  (*se bf for válido em uma  lista xs ++ [a] e se b pertencer a xs e se as hash de a e b forem iguais então eles são iguais*)
+  let rec lemma btExtendV_fold_dup (bf:bforest) (xs :list block) (a b :block)
+    requires { foldLbfE_valid bf (rcons xs a) }
+    requires { LMem.mem b xs }
+    requires { hashB a = hashB b }
+    ensures  { a = b }
+  = ()
+
+
+  (*se as hash de bt forem validas e não existirem colições em bf para todos os elementos de bs 
+  então as hash de bf extentido com todos os blocos de bs vão ser validas*)
+  lemma btExtendH_fold : forall bf :bforest, bs :chain.
+    validH bf -> foldLbfE_valid bf bs -> validH (foldLbfE bf bs)
+ 
+ (*se bf é valida  e a fubção de hash é ingetiva para b em bf então bf extendido com b tem o gblock*) 
+  lemma btExtendIB : forall bf :bforest, b :block.
+    validH bf -> noCollision bf b -> hasInit bf ->
+    hasInit (bfExtend bf b)
+
+  (*se bf é valida e não existirem colições em bf para todos os elementos de bs 
+  então  bf extentido com todos os blocos de bs vai ter o gblock*)
+  lemma btExtendIB_fold: forall bf :bforest, bs :chain.
+    validH bf -> foldLbfE_valid bf bs -> hasInit bf ->
+    hasInit (foldLbfE bf bs)
+
+  (*se não existirem colições em bf para b e as se as hash de bt forem validas então bf estendido com b tem obrigatótiamente o bloco b*)
+  lemma in_ext : forall bf :bforest, b :block.
+    noCollision bf b -> validH bf -> hasBlock (bfExtend bf b) b
+
+  (*se não existirem colições em bf para b então a função de estenter um bloco é  idempotente*)
+  lemma btExtend_idemp : forall bf :bforest, b :block.
+    noCollision bf b -> bfExtend bf b = bfExtend (bfExtend bf b) b
+  
+  (*...*)
+  lemma btExtend_idemp1 : forall bf :bforest, b :block.
+    hasBlock bf b -> bfExtend bf b = bf
+
+  (*...*)
+  lemma btAdd_comm : forall  bf :bforest, h1 h2 :hash, b1 b2 :block.
+    (h1 = h2 -> b1 = b2) -> add h2 b2 (add h1 b1 bf) == add h1 b1 (add h2 b2 bf)
+
+  (*se não ocorrem colições para b1 nem b2 em bf e se a função de hash é injetiva então a operação de extenção é comutativa*)
+  lemma btExtend_comm : forall bf:bforest,  b1 b2 :block.
+    noCollision bf b1 /\ noCollision bf b2 /\ (hashB b1 = hashB b2 -> b1 = b2) 
+      -> bfExtend (bfExtend bf b1) b2 = bfExtend (bfExtend bf b2) b1
+
+  (*se todos os blocos na lista de blocos são distintas e se um bloco pertence a xs e um bloco pertence a bf e se têm as mesmas hash então eles são iguais*)
+  predicate no_collisions (bf:bforest) (xs:list block) =
+      forall a b :block. LMem.mem a xs /\ mem (hashB b) bf /\ hashB a = hashB b -> a = b
+
+  (*se bf estendido por todos os blocos de xs for válido então não existem colições para bf em xs *)
+  lemma btExtendV_valid_no_collisions : forall bf:bforest, xs:list block.
+    foldLbfE_valid bf xs -> no_collisions bf xs
+
+  (*se bf tem as hash validas e não existirem colições para xs em bf então não existem colições para bf em xs*)
+  lemma btExtendV_no_collisions_valid : forall bf:bforest, xs:list block.
+    validH bf -> no_collisions bf xs -> foldLbfE_valid bf xs 
+
+  (*se a função de hash é injetiva para todos os blocos de xs em bf 
+  e se a função de hash é injetiva para todos os blocos de ys em bf estendido com todos os blocos de xs então é equivalente 
+  a a função de hash é injetiva para todos os blocos de ys em bf e a função de hash é injetiva para todos os blocos de xs em bf estendido com todos os blocos de ys
+  *)
+  lemma btExtendV_fold_comm : forall bf:bforest, xs ys :list block.
+
+    foldLbfE_valid bf xs /\ foldLbfE_valid (foldLbfE bf xs) ys
+    <-> foldLbfE_valid bf ys /\ foldLbfE_valid (foldLbfE bf ys) xs
+
+  (*se as hash de bf são validas e se a função de hash é injetiva para todos os blocos de xs++ys em bf então a função de hash é injetiva para todos os blocos de ys em bf*)
+  lemma btExtendV_fold' : forall bf:bforest, xs ys :list block.
+    validH bf -> foldLbfE_valid bf (xs++ys) -> foldLbfE_valid bf ys 
+
+  (*se a função de hash é injetiva para todos os blocos de b:bs em bf então ocorre uma idempotencia em baixo*)
+  let rec lemma btExtend_fold1_comm (bf:bforest) (b:block) (bs:list block)
+    requires { foldLbfE_valid bf (Cons b bs) } 
+    ensures  { bfExtend (foldLbfE bf bs) b =
+               foldLbfE (bfExtend bf b) bs }
+  = match bs with
+    | Nil         -> ()
+    | Cons b' bs' -> btExtend_fold1_comm (bfExtend bf b') b  bs'
+    end
+  
+  (*se a função de hash é injetiva para todos os blocos de bs++bs' em bf então ocorre uma idempotencia em baixo *)
+  let rec lemma btExtend_fold_comm (bf:bforest) (bs bs' :list block)
+    requires { foldLbfE_valid bf (bs++bs') } 
+    ensures  { foldLbfE (foldLbfE bf bs) bs' = foldLbfE (foldLbfE bf bs') bs }
+  = match bs with
+    | Nil        -> ()
+    | Cons _ bss -> btExtend_fold_comm bf bss bs'
+    end
+  
+  (*se a função de hash é injetiva para todos os blocos de bs em bf e bf tem o bloco b então bf extentendido com todos os blocos de bs também tem o bloco b*)
+  lemma btExtend_fold_preserve : forall b :block, bf :bforest, bs: list block.
+    foldLbfE_valid bf bs -> hasBlock bf b-> hasBlock (foldLbfE bf bs) b
+
+  lemma btExtend_new_block:  forall bf :bforest, b :block.
+    validH bf -> noCollision bf b ->  not LMem.mem (hashB b) (dom bf) -> LMem.mem b ( all_blocks (bfExtend bf b ) )
+
+  lemma btExtend_get_block:  forall bf :bforest, b :block, k:hash.
+    validH bf -> noCollision bf b ->  not LMem.mem (hashB b) (dom bf) -> hashB b <> k -> get_block (bfExtend bf b) k = get_block bf k 
+ 
+  (* se as hash de bf forem validas e se a função de hash é injetiva para todos os blocos de bs em bf e se b pertence a bs então a função de hash é injetiva para b em bf *)
+  lemma btExtendV_within : forall bf :bforest, bs:list block, b:block.
+    validH bf -> foldLbfE_valid bf bs -> LMem.mem b bs -> noCollision bf b 
+  
+  (* se a função de hash é injetiva para todos os blocos de bfs ++ [b:afs] em bf então ocorre uma idempotencia em baixo *)
+  let rec lemma btExtend_fold_within (bf:bforest) (afs bfs:list block) (b:block)
+    requires { foldLbfE_valid bf (bfs++(Cons b afs)) }
+    ensures  { foldLbfE bf (bfs++(Cons b afs)) = foldLbfE (bfExtend bf b) (bfs++afs) }
+  = match bfs with
+    | Nil        -> ()
+    | Cons b' bfs' -> btExtend_fold_within (bfExtend bf b') afs bfs' b 
+    end
+
+end
+
+
+module BfExtendCompute
+
+  use export Types
+  use export Parameters
+  use export Forests
+  use export BlockTreeProperties
+  use export BfExtend
+
+  (*serve para garantir uma seria de coisas normais que ocorrem quando um elemento é removido da lista*)
+  let lemma remove_lm (bf bf' :bforest) (d d' :list hash) (b:block)
+    requires { bf' = remove (hashB b) bf }
+    requires { d = dom bf /\ d' = dom bf' }
+    ensures  { validH bf -> validH bf' }
+    ensures  { forall h :hash. mem h bf' -> mem h bf }
+    ensures  { forall h :hash. mem h bf -> mem h bf' \/ h = hashB b }
+    ensures  { forall h :hash. LMem.mem h d' <-> LMem.mem h (remH (hashB b) d) }
+    ensures  { forall h :hash. LMem.mem h d' -> LMem.mem h d }
+    ensures  { forall h :hash. LMem.mem h d -> LMem.mem h d' \/ h = hashB b }
+    ensures  { forall a :block. hasBlock bf a -> hasBlock bf' a \/ hashB a = hashB b }
+    ensures  { forall a :block. hasBlock bf' a -> hasBlock bf a }
+  = ()
+
+  (*serve para garantir uma seria de coisas normais que ocorrem quando um elemento é adicionado da lista*)
+  let lemma add_lm (bf bf' :bforest) (d d' :list hash) (x:block)
+    requires { noCollision bf x }
+    requires { bf' = add (hashB x) x bf }
+    requires { d = dom bf /\ d' = dom bf' }
+    ensures  { validH bf -> validH bf' }
+    ensures  { forall h :hash. mem h bf -> mem h bf' }
+    ensures  { forall h :hash. mem h bf' -> mem h bf \/ h = hashB x }
+    ensures  { forall h :hash. h = hashB x \/ (LMem.mem h d <-> LMem.mem h (remH (hashB x) d')) }
+    ensures  { forall h :hash. LMem.mem h d -> LMem.mem h d' }
+    ensures  { forall h :hash. LMem.mem h d' -> LMem.mem h d \/ h = hashB x }
+    ensures  { forall a :block. hasBlock bf' a <->  hasBlock bf a \/ a = x }
+  = ()
+
+  (* If x and b have the same hash value, remove and add do not commute!
+   *)
+ 
+ let lemma rm_add_lm (bf bf' bfrb bfrb' :bforest) (x b:block)
+    requires { bf' = add (hashB x) x bf }
+    requires { bfrb' = remove (hashB b) bf' }
+    requires { bfrb = remove (hashB b) bf }
+    requires { noCollision bf x }
+    requires { validH bf }
+    ensures  { hasBlock bf' x }  
+    ensures  { forall a :block. hasBlock bf' a <->  hasBlock bf a \/ a = x }
+    ensures  { forall h :hash. mem h bfrb' ->
+    	         mem h (add (hashB x) x bfrb) /\
+                 find h bfrb' = find h (add (hashB x) x bfrb) }
+    ensures  { hashB x<> hashB b -> forall h :hash. mem h (add (hashB x) x bfrb) -> 
+                 mem h bfrb' /\
+                 find h (add (hashB x) x bfrb) = find h bfrb' }
+    ensures  { hashB x<> hashB b -> bfrb' == add (hashB x) x bfrb }
+  = ()
+
+  (*
+  Função recursiva que demonstra que ao estender uma floresta de blocos (bforest) com um novo bloco x,
+  a cadeia até um bloco b na nova floresta é composta por uma parte adicional p concatenada à cadeia original.
+*)
+  let rec lemma btExtend_chain_prefix_ind (bf bf':bforest) (x:block) (b:block) 
+    
+    (* bf' é criado ao adicionar x a bf *)
+    requires { bf' = add (hashB x) x bf } 
+    (* Garante ausência de colisões de hash para x em bf *)
+    requires { noCollision bf x }        
+    (* Verifica que bf possui hashes válidos *)
+    requires { validH bf }               
+
+    (*caso de x ser colocado depois de b*)
+    (* requires {not LMem.mem x (compute_chain_aux bf' b (dom bf') (size bf')) }*)
+    
+    (* O hash de x não está presente no domínio de bf *)
+    requires { not LMem.mem (hashB x) (dom bf) }
+    (* Os hashes de x e b devem ser diferentes *)
+    requires { hashB x <> hashB b }      
+  
+    (* A dimensão de bf diminui a cada iteração *)
+    variant  { size bf }
+
+    ensures  { exists p :list block. compute_chain_aux bf' b (dom bf') (size bf') = p ++ compute_chain_aux bf b (dom bf) (size bf) }
+    
+  = 
+   (* Verifica que se b não está no domínio de bf, então também não estará no de bf' *)
+  assert { not (LMem.mem (hashB b) (dom bf) && hasBlock bf b && size bf > 0)
+             -> not (LMem.mem (hashB b) (dom bf') && hasBlock bf' b && size bf' > 0) } ;
+    if not (LMem.mem (hashB b) (dom bf) && hasBlock bf b && size bf > 0) then ()
+    else if ((not (mem b.prev bf)) || eqb b gBlock) then ()
+    else begin
+       (* Verifica a estrutura da cadeia computada em bf antes de remover o hash de b *)
+    	 assert { compute_chain_aux bf b (dom bf) (size bf) =
+                              rcons (compute_chain_aux (remove (hashB b) bf) 
+		    	 	    (find b.prev bf)
+				    (remH (hashB b) (dom bf))
+				    (size bf-1))
+				    b } ;
+
+       (* Verifica a estrutura da cadeia computada em bf' antes de remover o hash de b *)
+    	 assert { compute_chain_aux bf' b (dom bf') (size bf') =
+                              rcons (compute_chain_aux (remove (hashB b) bf')
+  		    	 	    (find b.prev bf')
+  				    (remH (hashB b) (dom bf'))
+  				    (size bf'-1))
+  				    b } ;
+	 assert { remove (hashB b) bf' = add (hashB x) x (remove (hashB b) bf) } ;
+
+   (* Garante que a concatenação das cadeias computadas em bf e bf' é consistente *)
+	 assert { forall pre :list block.
+	 	  compute_chain_aux bf' b (dom bf') (size bf') = pre ++ compute_chain_aux bf b (dom bf) (size bf)
+	           ->           
+                  rcons (compute_chain_aux (remove (hashB b) bf')
+		    	 	    (find b.prev bf')
+				    (remH (hashB b) (dom bf'))
+				    (size bf'-1)) b
+		  = pre ++
+                  rcons (compute_chain_aux (remove (hashB b) bf)
+  		    	 	    (find b.prev bf)
+  				    (remH (hashB b) (dom bf))
+  				    (size bf-1)) b } ;
+              
+	 assert { forall pre :list block. 
+	 	  compute_chain_aux bf' b (dom bf') (size bf') = pre ++ compute_chain_aux bf b (dom bf) (size bf)
+	            ->            
+                   rcons (compute_chain_aux (remove (hashB b) bf') 
+	  	    	 	    (find b.prev bf') 
+	  			    (remH (hashB b) (dom bf')) 
+	  			    (size bf'-1)) 
+	  			    b = pre ++ compute_chain_aux bf b (dom bf) (size bf) 
+                 } ;			    				   
+    btExtend_chain_prefix_ind (remove (hashB b) bf) (remove (hashB b) bf') x ( find b.prev bf)
+
+         end 
+  
+  (*se a função de hash é injetiva para x em bf e as hashs de bf são válidas então existe um p tal que a chain até b em bf extendido com x é igual 
+  a p ++ a chain até b em bf *)
+  let lemma btExtend_chain_prefix (bf:bforest) (x b :block)
+    requires { noCollision bf x }
+    requires { validH bf }
+    requires { not LMem.mem (hashB x) (dom bf) }
+    requires { hashB x <> hashB b } (*pois se hashB x = hashB b -> x = b -> compute_chain (bfExtend bf x) b = p++(compute_chain bf b) -> p = Nil*)
+    ensures  { exists p :chain. compute_chain (bfExtend bf x) b = p++(compute_chain bf b) }
+  = btExtend_chain_prefix_ind bf (add (hashB x) x bf) x b  
+
+   (*se bf é valido e não tem colisões com x em bf e a chain até b é boa então a chain até b em bf extendido com x é boa e que ela é igual á chain até b em bf*)
+  let lemma compute_chain_bFExtend (bf:bforest) (x b :block)
+    requires { noCollision bf x }
+    requires { validH bf }
+    requires { hasInit bf }
+    requires { good_chain (compute_chain bf b) }
+    (* good_chain_btExtend: a chain até b em bf extendido com x é boa *)
+    ensures  { good_chain (compute_chain (bfExtend bf x) b) }
+    
+    (* btExtend_compute_chain: a chain até b em bf extendido com x é igual á chain até b em bf*)
+    ensures  { compute_chain (bfExtend bf x) b = compute_chain bf b }     
+  
+  = (* instead of unfold good_chain *)
+    assert { let bc = compute_chain bf b in bc<>Nil /\ hd bc=gBlock } ;  
+    (* btExtend_chain_prefix bf x b  *)
+    assert { exists p :chain. compute_chain (bfExtend bf x) b = p++(compute_chain bf b) } 
+
+  (*garante que a maior chain possivel de uma bf é sempre menor ou igual á maior chain de bt extendido com todos os blocos de bs*)
+  let rec lemma btExtend_fold_sameOrBetter (bf :bforest) (bs: list block) 
+     requires { foldLbfE_valid bf bs } 
+     requires { validH bf }  
+     requires { hasInit bf } 
+     ensures  { fcreq (bfChain(foldLbfE bf bs)) (bfChain(bf)) } 
+   = match bs with 
+     | Nil -> () 
+     | Cons b bs' -> btExtend_fold_sameOrBetter (bfExtend bf b) bs'
+     end 
+
+  (*semelhante á de cima fala da monotonia crescente da função btchain*)
+  let rec lemma btExtend_monotone_btChain (bf :bforest) (bs ext: list block) 
+    requires { foldLbfE_valid bf (bs ++ ext) }
+    requires { validH bf }
+    requires { hasInit bf }
+    ensures  { fcreq (bfChain(foldLbfE bf (bs ++ ext) )) (bfChain(foldLbfE bf bs)) }
+  = match bs with
+    | Nil -> () 
+    | Cons h t -> btExtend_monotone_btChain (bfExtend bf h) t ext
+    end
+
+  (*a maior chain nunca é menore depois de uma mais extenções de bf*)
+  lemma btExtend_fold_not_worse : forall bf :bforest, bs : list block.
+    foldLbfE_valid bf bs -> validH bf ->  hasInit bf -> not fcr (bfChain(bf)) (bfChain(foldLbfE bf bs))
+  
+  (* se a função de hash é injetiva para todos os blocos de bs em bf e b pertence a bs e se todos os blocos de bs pretecerem a bf então fazer uma exenção com b ou
+  fazer uma extenção com todos os blocos de bs é o mesmo que é igual a bf*)
+  lemma btExtend_seq_same_bt : forall bf :bforest, b :block, bs : list block.
+    foldLbfE_valid bf bs ->  LMem.mem b bs ->
+      bf = foldLbfE bf bs -> bf = bfExtend bf b
+
+  
+  (*se bf é valido e não tem colisões com todos os blocos de bs em bf e a chain até b é boa então a chain até b em bf extendido com todos os blocos de bs é boa e
+  *)
+  let rec lemma compute_chain_foldLbfE (bf:bforest) (bs:list block) (b:block)
+    requires { foldLbfE_valid bf bs }
+    requires { validH bf }
+    requires { hasInit bf }
+    requires { good_chain (compute_chain bf b) }
+    
+    (* good_chain_btExtend_fold:  a chain até b em bf extendido com todos os blocos de bs é boa*)
+    ensures  { good_chain (compute_chain (foldLbfE bf bs) b) }
+
+    (* btExtend_compute_chain_fold: a chain até b em bf extendido com todos os blocos de bs é igual á chain até b em bf*)
+    ensures  { compute_chain (foldLbfE bf bs) b = compute_chain bf b }
+  = match bs with                   
+    | Nil        -> ()
+    | Cons _ bs' -> compute_chain_foldLbfE bf bs' b
+    end
+
+
+end

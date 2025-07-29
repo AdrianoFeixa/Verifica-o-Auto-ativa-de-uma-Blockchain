@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE why3session PUBLIC "-//Why3//proof session v5//EN"
+"https://www.why3.org/why3session.dtd">
+<why3session shape_version="6">
+<prover id="0" name="CVC4" version="1.8" timelimit="1" steplimit="0" memlimit="1000"/>
+<prover id="1" name="CVC5" version="1.1.2" timelimit="1" steplimit="0" memlimit="1000"/>
+<prover id="3" name="Alt-Ergo" version="2.4.2" timelimit="1" steplimit="0" memlimit="1000"/>
+<prover id="4" name="Eprover" version="2.6" timelimit="1" steplimit="0" memlimit="1000"/>
+<file format="whyml" proved="true">
+<path name=".."/><path name="dinamica.mlw"/>
+<theory name="Protocol" proved="true">
+ <goal name="emitBroadcast&#39;vc" expl="VC for emitBroadcast" proved="true">
+ <proof prover="4"><result status="valid" time="0.339674"/></proof>
+ </goal>
+ <goal name="init&#39;vc" expl="VC for init" proved="true">
+ <proof prover="4"><result status="valid" time="0.039336"/></proof>
+ </goal>
+ <goal name="filterPeers&#39;vc" expl="VC for filterPeers" proved="true">
+ <proof prover="3"><result status="valid" time="0.176260" steps="800"/></proof>
+ </goal>
+ <goal name="makeConnectPkts&#39;vc" expl="VC for makeConnectPkts" proved="true">
+ <proof prover="4"><result status="valid" time="0.336333"/></proof>
+ </goal>
+ <goal name="filterTxBC&#39;vc" expl="VC for filterTxBC" proved="true">
+ <proof prover="3"><result status="valid" time="0.074399" steps="426"/></proof>
+ </goal>
+ <goal name="mapTxH&#39;vc" expl="VC for mapTxH" proved="true">
+ <proof prover="3"><result status="valid" time="0.616178" steps="4065"/></proof>
+ </goal>
+ <goal name="filterH&#39;vc" expl="VC for filterH" proved="true">
+ <proof prover="3"><result status="valid" time="0.165887" steps="748"/></proof>
+ </goal>
+ <goal name="mapHPkt&#39;vc" expl="VC for mapHPkt" proved="true">
+ <proof prover="3"><result status="valid" time="0.258840" steps="1591"/></proof>
+ </goal>
+ <goal name="filterTxH&#39;vc" expl="VC for filterTxH" proved="true">
+ <proof prover="3"><result status="valid" time="0.150987" steps="727"/></proof>
+ </goal>
+ <goal name="procMsg&#39;vc" expl="VC for procMsg" proved="true">
+ <transf name="split_vc" proved="true" >
+  <goal name="procMsg&#39;vc.0" expl="precondition" proved="true">
+  <proof prover="4"><result status="valid" time="0.203607"/></proof>
+  </goal>
+  <goal name="procMsg&#39;vc.1" expl="postcondition" proved="true">
+  <proof prover="1"><result status="valid" time="0.217820" steps="61978"/></proof>
+  </goal>
+  <goal name="procMsg&#39;vc.2" expl="postcondition" proved="true">
+  <proof prover="1"><result status="valid" time="0.206229" steps="62033"/></proof>
+  </goal>
+  <goal name="procMsg&#39;vc.3" expl="postcondition" proved="true">
+  <proof prover="1"><result status="valid" time="0.420699" steps="84854"/></proof>
+  </goal>
+  <goal name="procMsg&#39;vc.4" expl="postcondition" proved="true">
+  <proof prover="1"><result status="valid" time="0.163491" steps="62088"/></proof>
+  </goal>
+  <goal name="procMsg&#39;vc.5" expl="postcondition" proved="true">
+  <transf name="split_vc" proved="true" >
+   <goal name="procMsg&#39;vc.5.0" expl="postcondition" proved="true">
+   <proof prover="4"><result status="valid" time="0.259252"/></proof>
+   </goal>
+   <goal name="procMsg&#39;vc.5.1" expl="postcondition" proved="true">
+   <proof prover="4"><result status="valid" time="0.230597"/></proof>
+   </goal>
+   <goal name="procMsg&#39;vc.5.2" expl="postcondition" proved="true">
+   <proof prover="4"><result status="valid" time="0.199159"/></proof>
+   </goal>
+   <goal name="procMsg&#39;vc.5.3" expl="postcondition" proved="true">
+   <proof prover="4"><result status="valid" time="0.209915"/></proof>
+   </goal>
+   <goal name="procMsg&#39;vc.5.4" expl="postcondition" proved="true">
+   <proof prover="3"><result status="valid" time="0.340645" steps="1993"/></proof>
+   </goal>
+   <goal name="procMsg&#39;vc.5.5" expl="postcondition" proved="true">
+   <proof prover="3"><result status="valid" time="0.266037" steps="700"/></proof>
+   </goal>
+  </transf>
+  </goal>
+  <goal name="procMsg&#39;vc.6" expl="postcondition" proved="true">
+  <proof prover="4"><result status="valid" time="0.173215"/></proof>
+  </goal>
+ </transf>
+ </goal>
+ <goal name="procInt&#39;vc" expl="VC for procInt" proved="true">
+ <proof prover="0"><result status="valid" time="0.340109" steps="78486"/></proof>
+ </goal>
+</theory>
+<theory name="ConsensusNetwork" proved="true">
+ <goal name="remP&#39;vc" expl="VC for remP" proved="true">
+ <proof prover="1"><result status="valid" time="0.507486" steps="82807"/></proof>
+ </goal>
+ <goal name="procMsg_glbl&#39;vc" expl="VC for procMsg_glbl" proved="true">
+ <proof prover="4"><result status="valid" time="0.310978"/></proof>
+ </goal>
+ <goal name="procInt_glbl&#39;vc" expl="VC for procInt_glbl" proved="true">
+ <proof prover="4"><result status="valid" time="0.239930"/></proof>
+ </goal>
+ <goal name="initWorld&#39;refn&#39;vc" expl="VC for initWorld&#39;refn" proved="true">
+ <proof prover="3"><result status="valid" time="0.835321" steps="6910"/></proof>
+ </goal>
+ <goal name="step&#39;refn&#39;vc" expl="VC for step&#39;refn" proved="true">
+ <proof prover="3"><result status="valid" time="0.102227" steps="187"/></proof>
+ </goal>
+</theory>
+</file>
+</why3session>
