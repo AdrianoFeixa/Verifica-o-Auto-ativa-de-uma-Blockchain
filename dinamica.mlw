@@ -2,10 +2,10 @@ module Protocol
 
 use export estatica.BfExtendCompute
 
-(*No Coq usam um par ip porta mas aqui preferem usar apenas um iteiro, no final das contas vai dar á mesma coisa*)
+(* No Coq usam um par IP/porta, mas aqui preferem usar apenas um inteiro; no final de contas, dá no mesmo. *)
  type address = int
 
-(*os diversos tipos de mensaguem que podemos ter que no final do dia vão representar as compunentes que podemos enviar.*)
+(* Os diversos tipos de mensagem que podemos ter e que, no final do dia, vão representar os componentes que podemos enviar. *)
  type message =
       | AddrMsg (list address)
       | ConnectMsg
@@ -14,14 +14,14 @@ use export estatica.BfExtendCompute
       | InvMsg (list hash)
       | GetDataMsg hash
 
-  (*dar unpack as mensagens de blocos*)
+  (* Fazer o unpack das mensagens de blocos. *)
   function msg_block (m:message) : block =
     match m with
     | BlockMsg b -> b
     | _ -> gBlock
     end
   
-  (*dar unpack as mensagens de hashes*)
+  (* Fazer o unpack das mensagens de hashes. *)
   function msg_hashes (m:message) : list hash =
     match m with
     | InvMsg sh -> sh
@@ -29,29 +29,30 @@ use export estatica.BfExtendCompute
     | _ -> Nil
     end
   
-  (*trasação interna*)
+  (* Transação interna. *)
   type intnlTx =
        | TxT tx
        | MintT
 
+  (* Pacote com a mensagem. *)
   type packet = { src : address ; dst : address ; msg : message }
   
   val predicate eqp (p1:packet) (p2:packet)
   (* ensures { result <-> p1 = p2 } *)
   ensures { result <-> p1.src = p2.src /\ p1.dst = p2.dst /\ p1.msg = p2.msg }
 
-  (* "empacotar" uma mensagem *)
+  (* "Empacotar" uma mensagem. *)
   function mkP (s d:address) (m:message) : packet
     = { src=s ; dst=d ; msg=m } 
 
 (* Definition ToSend := seq Packet. *)
 
-  (*funções de emissão de pacotes emitir 1, mais que um ou nenhum*)
+  (* Funções de emissão de pacotes: emitir um, mais do que um, ou nenhum. *)
   let constant emitZero : list packet = Nil
   function emitOne (p :packet) : list packet = Cons p Nil
   function emitMany (pkts :list packet) : list packet = pkts
   
-  (*envia a mesma mensaguem para uma lista de detinos*)
+  (* Envia a mesma mensagem para uma lista de destinos. *)
   let rec function emitBroadcast (from:address) (dsts:list address) (m:message) : list packet =
     ensures { forall p :packet.  LMem.mem p result -> p.src=from /\ LMem.mem p.dst dsts /\ p.msg=m }
     ensures { forall d :address. LMem.mem d dsts -> LMem.mem { src=from ; dst=d ; msg=m } result }
@@ -59,28 +60,28 @@ use export estatica.BfExtendCompute
   | Nil -> Nil
   | Cons d t -> Cons { src=from ; dst=d ; msg=m } (emitBroadcast from t m)
   end
-
-  (*representa um nodo na blockchain *)
+  
+  (* Representa um nodo na blockchain. *)
   type state = { id : address ; peers : list address ; blockTree : bforest ; txPool : txpool }
 
-  (*empacota nodos para a blockchain*)
+  (* Empacota nodos para a blockchain. *)
   function mkSt  (n:address) (prs:list address) (bf:bforest) (txp:txpool) : state
     = { id=n ; peers=prs ; blockTree=bf ; txPool=txp }
 
-  (*todos os estados devem ter as suas hash validas e devem ter o gblock e todos os nodos que conhecem devem ser unicos*)
+  (* Todos os estados devem ter os seus hashes válidos, devem conter o gblock e todos os nodos que conhecem devem ser únicos. *)
   (*Cof do Coq*)
   predicate inv (st:state) = validH st.blockTree /\ hasInit st.blockTree /\ distinct st.peers              
 
-  (*estado inicial de qualquer nodo no sistema de blockchain*)
+ (* Estado inicial de qualquer nodo no sistema de blockchain. *)
   let ghost function init (n:address) : state
   =  { id=n ; peers=Cons n Nil ; blockTree=add (hashB gBlock) gBlock empty ; txPool=Nil }
 
-  (*garante que os resultados da lista de pares são unicos*)
+  (* Garante que os resultados da lista de pares são únicos. *)
   val function undup (l:list address) : list address
     ensures { forall a :address. LMem.mem a result <-> LMem.mem a l }
     ensures { distinct result }
   
-  (*vai filtrar todos os endereços da primeira lista que aparecem na segunda lista*)
+  (* Vai filtrar todos os endereços da primeira lista que aparecem na segunda lista. *)
   let rec ghost function filterPeers (al:list address) (peers:list address) : list address
     ensures { forall a :address. LMem.mem a result <-> LMem.mem a al /\ not LMem.mem a peers }
   = match al with
@@ -89,8 +90,8 @@ use export estatica.BfExtendCompute
       	     	    else Cons a (filterPeers al' peers)
     end
 
-  (*criar uma lista de pacotes de mensaguens de conecção de o nodo cujo endereço é id para cada um dos nodos cujos endereços*)
-  (*estão na lista al*)
+  (* Criar uma lista de pacotes de mensagens de conexão do nodo cujo endereço é id para cada um dos nodos cujos endereços estão 
+  na lista al. *)
   let rec ghost function makeConnectPkts (al:list address) (id:address) : list packet
     ensures { forall p :packet. LMem.mem p result -> exists a :address. LMem.mem a al /\ p = mkP id a ConnectMsg }
     ensures { forall a :address. LMem.mem a al -> LMem.mem (mkP id a ConnectMsg) result }
@@ -99,7 +100,7 @@ use export estatica.BfExtendCompute
     | Cons a al' -> Cons (mkP id a ConnectMsg) (makeConnectPkts al' id)
     end
   
-  (*filtra todas as trasações que não são validas em bc*)
+  (* Filtra todas as transações que não são válidas em bc. *)
   let rec ghost function filterTxBC (txl:txpool) (bc:chain) : txpool
     ensures { forall t :tx. LMem.mem t result <-> LMem.mem t txl /\ txValid t bc }
   = match txl with
@@ -108,7 +109,7 @@ use export estatica.BfExtendCompute
       	     	     else filterTxBC txl' bc
     end
   
-  (*vamos obter uma lista das hash das transações dadas*)
+  (* Vamos obter uma lista dos hashes das transações dadas. *)
   let rec ghost function mapTxH (txl:txpool) : list hash
     ensures { forall h :hash. LMem.mem h result -> exists t :tx. LMem.mem t txl /\ h = hashT t }
     ensures { forall t :tx. LMem.mem t txl -> LMem.mem (hashT t) result }
@@ -117,7 +118,7 @@ use export estatica.BfExtendCompute
     | Cons t txl' -> Cons (hashT t) (mapTxH txl')
     end
   
-  (*filtrar todas as hash de lh que também pertem a filtH*)
+  (* Filtrar todos os hashes de lh que também pertencem a filtH. *)
   let rec ghost function filterH (lh:list hash) (filtH:list hash) : list hash
     ensures { forall h: hash. LMem.mem h result <-> LMem.mem h lh /\ not LMem.mem h filtH }
   = match lh with
@@ -126,8 +127,8 @@ use export estatica.BfExtendCompute
       	     	    else Cons h (filterH lh' filtH)
     end
   
-  (*vamos obter uma lista de pacotes cujas mensaguens são todos de um só nodo, para um outro nodo, termos tantas mensaguens como*)
-  (*hashs de lh*)
+  (* Vamos obter uma lista de pacotes cujas mensagens são todas de um só nodo, para outro nodo, tendo tantas mensagens 
+  quantos hashes de lh. *)
   let rec ghost function mapHPkt (lh:list hash) (id:address) (from:address) : list packet
     ensures { forall p :packet. LMem.mem p result -> exists h :hash. LMem.mem h lh /\ p = mkP id from (GetDataMsg h) }
     ensures { forall h :hash. LMem.mem h lh -> LMem.mem (mkP id from (GetDataMsg h)) result }
@@ -136,7 +137,7 @@ use export estatica.BfExtendCompute
     | Cons h lh' -> Cons (mkP id from (GetDataMsg h)) (mapHPkt lh' id from) 
     end
   
-  (*vamos filtrar todas as trasações cuja suas hash são diferentes de h *)
+  (* Vamos filtrar todas as transações cujos hashes são diferentes de h. *)
   let rec ghost function filterTxH (txl:txpool) (h:hash) : txpool
     ensures { forall t :tx. LMem.mem t result <-> LMem.mem t txl /\ hashT t = h }
   = match txl with
@@ -145,7 +146,7 @@ use export estatica.BfExtendCompute
       	     	     else filterTxH txl' h
     end
 
-   (*verifica que não á colisões com um bloco a adicionar e bt do nodo*)
+  (* Verifica que não há colisões com um bloco a adicionar e bt do nodo. *)
   predicate procMsg_enbld (st:state) (address) (m:message) (time)  = 
     match m with | BlockMsg b -> noCollision st.blockTree b
     	       	 | _ -> true
@@ -153,54 +154,53 @@ use export estatica.BfExtendCompute
 
   let ghost function procMsg (st:state) (from:address) (m:message) (ts:time): (st' :state, lp :list packet)
     
-    (*é nessesário que se a mensaguem for para adicionar um bloco que não aja colisões com esse bloco na bt do nodo*)
+    (* É necessário que, se a mensagem for para adicionar um bloco, não haja colisões com esse bloco na bt do nodo. *)
     requires { procMsg_enbld st from m ts }
 
-    (* procMsg_id_constant: garante que o endereço do nodo a usar a função é constante*)
+    (* procMsg_id_constant: garante que o endereço do nodo a usar a função é constante. *)
     ensures  { st'.id = st.id }
 
-    (* procMsg_validH: se as hash da bt do nodo eram validas então depois da ação da função a sua nova bt tbm o será*)
+    (* procMsg_validH: se os hashes da bt do nodo eram válidos, então, depois da acção da função, a sua nova bt também o será. *)
     ensures  { validH st.blockTree -> validH st'.blockTree }
 
-    (* procMsg_has_init_block: se as hash da bt do nodo eram validas e se este nodo tem o gblock então a sua nova bt tbm terá o*)
-    (*o gblock*)
+    (* procMsg_has_init_block: se os hashes da bt do nodo eram válidos e se este nodo tem o gblock, então a sua nova bt também 
+    terá o gblock. *)
     ensures  { validH st.blockTree -> hasInit st.blockTree -> hasInit st'.blockTree }
     
-    (* procMsg_peers_uniq: se alista de endereços de nodos que que o nodo conhece não tem repetições então depois da ação da  *)
-    (*função tbm não terá repetições*)                 
+    (* procMsg_peers_uniq: se a lista de endereços dos nodos que o nodo conhece não tem repetições, então, depois da acção da função, 
+    também não terá repetições. *)                 
     ensures  { distinct st.peers -> distinct st'.peers }                                                 
     
     ensures  { let bf = st.blockTree in let bf' = st'.blockTree in
-    	       match m with                                                                          (*se a mensagem recebida for um BlockMsg b então*)
+    	       match m with                                                                          (* Se a mensagem recebida for um BlockMsg b, então: *)
     	       
-             | BlockMsg b -> (hasBlock st.blockTree b -> st'.blockTree = st.blockTree) /\          (* procMsg_known_block_nc_blockTree: se b já pertence á bt do nodo então a bt do novo estado interno do nodo é igual ao anterior*)        
-               	 	       (hasInit bf -> LMem.mem b (bfChain bf) -> bfChain bf' = bfChain bf) /\    (* procMsg_known_block_nc_btChain: se b já pertencer á maior chain da bt do nodo então a maior chain da bt do novo estado interno do nodo é igual a chain do estado interno anterior*)
-			       bf' = bfExtend bf b /\                                                                (* procMsg_block_btExtend_bt: se b não pertencer a bf então a bf do proximo estado interno do nodo vai ser apenas a bf anterior entendida com b*)
-			       bfChain bf' = bfChain (bfExtend bf b)                                                 (* procMsg_block_btExtend_btChain: se b não pertencer a bf então a maior chain da bf do proximo estado interno do nodo vai ser apenas a maior chain de bf do estado interno anterior entendida com b*)
-              
-                                                                                                   (*se a mensagem recebida não for um BlockMsg b então*)
+             | BlockMsg b -> (hasBlock st.blockTree b -> st'.blockTree = st.blockTree) /\          (* procMsg_known_block_nc_blockTree: se b já pertencer à bt do nodo, então a bt do novo estado interno do nodo é igual à anterior. *)        
+               	 	       (hasInit bf -> LMem.mem b (bfChain bf) -> bfChain bf' = bfChain bf) /\    (* procMsg_known_block_nc_btChain: se b já pertencer à maior chain da bt do nodo, então a maior chain da bt do novo estado interno do nodo é igual à chain do estado interno anterior. *)
+			       bf' = bfExtend bf b /\                                                                (* procMsg_block_btExtend_bt: se b não pertencer à bf, então a bf do próximo estado interno do nodo será apenas a bf anterior estendida com b. *)
+			       bfChain bf' = bfChain (bfExtend bf b)                                                 (* procMsg_block_btExtend_btChain: se b não pertencer à bf, então a maior chain da bf do próximo estado interno do nodo será apenas a maior chain da bf do estado interno anterior estendida com b. *)
+                                                                                                   (* Se a mensagem recebida não for um BlockMsg b então: *)
              
-             | _ -> st'.blockTree = st.blockTree /\                                                (* procMsg_non_block_nc_blockTree: as bt do estado interno nodo atual, e no proximo estado interno no nodo vão ser iguais *)
-             bfChain st'.blockTree = bfChain st.blockTree                                          (* procMsg_non_block_nc_btChain: as maiores chains de bt do estado interno nodo atual, e no proximo estado interno no nodo vão ser iguais*)
+             | _ -> st'.blockTree = st.blockTree /\                                                (* procMsg_non_block_nc_blockTree: as bt do estado interno do nodo actual e do próximo estado interno do nodo serão iguais. *)
+             bfChain st'.blockTree = bfChain st.blockTree                                          (* procMsg_non_block_nc_btChain: as maiores chains da bt do estado interno do nodo actual e do próximo estado interno do nodo serão iguais. *)
 	       	end }
     
-    ensures  { inv st -> inv st' } (*a invariante de estado prevalese com as alterações no estado interno de um nodo*)
-		
+    ensures  { inv st -> inv st' } (* A invariante de estado prevalece com as alterações no estado interno de um nodo. *)
+
   = match m with
-    (*quando recebemos este tipo de mensaguem ou não fazemos nada pois o endereço do nodo que nos enviou a mensaguem já é conhcido*)
-    (*ou se este não for conhecido adicionamo-lo aos nossos peers, e enviamos uma mensaguem de conect para o nodo que nos enviou a*)
-    (*mensaguem e uma mensaguem de addrmsg com todos os endereços que conhemos aos nodos cujos endereços conheciamos antes de rece*)
-    (*-ber a mensaguem de conect, o estado no nodo é atualizado para ter mais um endereço na sua lista de endereços*)
+    (** Quando recebemos este tipo de mensagem, ou não fazemos nada — pois o endereço do nodo que nos enviou a mensagem já é conhecido —,
+    ou, se este não for conhecido, adicionamo-lo aos nossos peers e enviamos uma mensagem de *connect* para o nodo que nos enviou a
+    mensagem, bem como uma mensagem *addrmsg* com todos os endereços que conhecemos aos nodos cujos endereços já conhecíamos antes
+    de receber a mensagem de *connect*. O estado do nodo é atualizado para incluir mais um endereço na sua lista de endereços. *)
     | ConnectMsg -> if LMem.mem from st.peers then (st, emitZero)
       		    else let updP = undup (Cons from st.peers)
 		    	 in  (mkSt st.id updP st.blockTree st.txPool , 
                               emitOne (mkP st.id from ConnectMsg) ++ emitBroadcast st.id st.peers (AddrMsg updP))
 
-    (*vamos primeiro retirar todos os endereços que já conheço, se conhecer todos não faço nada*)
-    (*se não conhecer algum deles vamos criar mensaguens de conect para cada um dos nodos que não conhecemos*)
-    (*depois vamos enviar todas essas mensaguens de conect e vamos enviar para todos os nodos cujos endereços conheciamos antes de*)
-    (*receber a mensaguem de Addr uma mensaguem de Addr com todos os nodos que conhecemos depois de receber a mensaguem o estado*)
-    (*do nodo é atualizado para ter todos os novos endereços que recebeu anteriormente*)
+    (** Vamos primeiro retirar todos os endereços que já conhecemos. Se os conhecermos todos, não fazemos nada;
+    se houver algum que não conhecemos, vamos criar mensagens de *connect* para cada um desses nodos.
+    Depois, enviamos todas essas mensagens de *connect* e enviamos, para todos os nodos cujos endereços já conhecíamos antes de
+    receber a mensagem de *Addr*, uma nova mensagem *Addr* com todos os nodos que passámos a conhecer após a receção.
+    O estado do nodo é então atualizado com todos os novos endereços. *)
     | AddrMsg knownPeers -> let newP = filterPeers knownPeers st.peers
                             in if is_nil newP then (st, emitZero)
 			       else let connects = makeConnectPkts newP st.id
@@ -208,38 +208,38 @@ use export estatica.BfExtendCompute
 				    in (mkSt st.id updP st.blockTree st.txPool,
 				        emitMany connects ++ emitBroadcast st.id st.peers (AddrMsg updP))
 		
-    (*vamos adicionar o novo bloco á bt do nodo, vamos garantir que nenhuma trasação do nodo é invalida em relação á nova maior*) 
-    (*chain, depois vamos obter uma lista de todas as hash dos blocos da nova bt com todas as hash do novo conjunto de transações*)
-    (*finalmente vamos enviar para todos os nodos que conhecemos o endereço uma mensaguem de inv com a lista anterior de hashes*)
-    (*o estado do nodo é atualizado para a nova bt e o novo conjunto de trasações*)		    
+    (** Vamos adicionar o novo bloco à bt do nodo, garantindo que nenhuma transação do nodo é inválida face à nova maior *chain*.
+    Depois, obtemos uma lista com todos os hashes dos blocos da nova bt, juntamente com todos os hashes do novo conjunto de transações.
+    Por fim, enviamos uma mensagem *inv* com essa lista de hashes para todos os nodos cujo endereço conhecemos.
+    O estado do nodo é atualizado com a nova bt e o novo conjunto de transações. *)
     | BlockMsg b -> let newBf = bfExtend st.blockTree b
       	       	    in let newPool = filterTxBC st.txPool (bfChain newBf)   
 		    in let ownHashes = dom newBf ++ mapTxH newPool 
 		    in (mkSt st.id st.peers newBf newPool,
 		        emitBroadcast st.id st.peers (InvMsg ownHashes))
 
-    (*vamos adicionar a nova transação á lista de trasações do nodo*) 
-    (*depois vamos obter uma lista de todas as hash dos blocos da bt do nodo, bem com todas as hash do novo conjunto de transações*)
-    (*finalmente vamos enviar para todos os nodos que conhecemos o endereço uma mensaguem de inv com a lista anterior de hashes*)
-    (*o estado do nodo é atualizado para o novo conjunto de trasações*)		    
+    (** Vamos adicionar a nova transação à lista de transações do nodo.
+    Depois, obtemos uma lista com todos os hashes dos blocos da bt do nodo, assim como os hashes do novo conjunto de transações.
+    Por fim, enviamos uma mensagem *inv* com essa lista de hashes para todos os nodos cujo endereço conhecemos.
+    O estado do nodo é atualizado com o novo conjunto de transações. *)		    
     | TxMsg tx -> let newPool = tpExtend st.txPool st.blockTree tx
       	       	  in let ownHashes = dom st.blockTree ++ mapTxH newPool 
 		  in (mkSt st.id st.peers st.blockTree newPool,
 		      emitBroadcast st.id st.peers (InvMsg ownHashes))
 		
-    (*vamos ao conjunto das nossas hash, constitudo por hashs de blocos e trasasõess do nodo e vamos retirar ao*)
-    (*conjunto de hashs recebido todas as hash do nodo depois vamos enviar para o nodo remetente várias mensaguens de*)
-    (*getdata, cada uma para cada hash que o nodo recetor tenha e o nodo remetente não*)
-    (*o estado do nodo mantemcem igual*)
+    (** Vamos ao nosso conjunto de hashes — constituído pelos hashes dos blocos e das transações do nodo —,
+    e retiramos desse conjunto de hashes recebido todas as que o nodo já possui.
+    Em seguida, enviamos ao nodo remetente várias mensagens *getdata*, uma para cada hash que o nodo recetor tenha e o remetente não.
+    O estado do nodo mantém-se inalterado. *)
     | InvMsg peerHashes -> let ownHashes = dom st.blockTree ++ mapTxH st.txPool
       	     		   in let newH = filterH peerHashes ownHashes 
 			   in let gets = mapHPkt newH st.id from 
 			   in (st, emitMany gets)
     
-    (*se a mensaguem é do nodo para ele próprio é para ignorar, o estado do nodo mantem-se igual*)
-    (*depois vamos buscar o bloco cuja hash é igual á enviada á bt do nodo se ele encontrar o bloco *)
-    (*então ele vai enviar o bloco ao nodo que o pediu se não o encontrar, vai procurar essa hash no conjunto de hashs do sue con*)
-    (*-junto de trasações se o nodo a encontrar ai envia a trasação que o remetente lhe pediu se não nada faz*)
+    (** Se a mensagem é do nodo para si próprio, é para ser ignorada; o estado do nodo mantém-se igual.
+    Depois, procuramos na bt do nodo o bloco cuja hash seja igual à enviada. Se o bloco for encontrado,
+    o nodo envia-o ao remetente. Caso contrário, procura essa hash no conjunto de hashes das suas transações.
+    Se a transação for encontrada aí, envia-a ao remetente; caso contrário, não faz nada. *)
     | GetDataMsg h -> if from=st.id then (st, emitZero)
       		      else let matchingBlock = get_block st.blockTree h
 		           in if not eqb matchingBlock gBlock (*getblock retorna o gblock se nada encontrar*)
@@ -251,7 +251,7 @@ use export estatica.BfExtendCompute
 
     end
   
-  (*vai returnar true se ou tr não é MinT, se não consegui gerar um bloco e se não aja colisões com o bloco gerado e a bt do nodo*)
+  (* Vai retornar true se tr não for MinT, se não conseguir gerar um bloco, e se não houver colisões entre o bloco gerado e a bt do nodo. *)
   predicate procInt_enbld (st:state) (tr:intnlTx) (ts:time) =
     let bc = bfChain st.blockTree
     in match tr with
@@ -266,35 +266,34 @@ use export estatica.BfExtendCompute
     
     requires { procInt_enbld st tr ts }
 
-    (*procInt_id_constant: o endereço do nodo é constante*)
+    (* procInt_id_constant: o endereço do nodo é constante. *)
     ensures  { st'.id = st.id }
 
-    (* procInt_validH: se as hash da bt do nodo eram validas então depois da ação da função a sua nova bt tbm o será*)	       
+    (* procInt_validH: se os hashes da bt do nodo eram válidos, então, após a acção da função, a nova bt também o será. *)     
     ensures  { validH st.blockTree -> validH st'.blockTree }
 
-    (* procInt_has_init_block: se as hash da bt do nodo eram validas e se este nodo tem o gblock então a sua nova bt tbm terá o*)
-    (*gblock*)                                            
+    (* procInt_has_init_block: se os hashes da bt do nodo eram válidos e se este nodo tem o gblock, então a nova bt também terá 
+    o gblock. *)                                            
     ensures  { validH st.blockTree -> hasInit st.blockTree -> hasInit st'.blockTree }
 
-    (* procInt_peers_uniq: se a lista de endereços de nodos que que o nodo conhece não tem repetições então depois da ação da*)
-    (*função tbm não terá repetições*)               
+    (* procInt_peers_uniq: se a lista de endereços de nodos que que o nodo conhece não tem repetições então depois da ação da
+    função tbm não terá repetições*)               
     ensures  { distinct st.peers -> distinct st'.peers }                                                 
     
 
-    ensures  { inv st -> inv st' } (*a invariante de estado prevalese com as alterações no estado interno de um nodo*)
+    ensures  { inv st -> inv st' } (* A invariante de estado prevalece com as alterações no estado interno de um nodo. *)
  
  = match tr with
     
-    (*quando um nodo produz uma trasação, esta será propagada para todos os seus pares, ou seja todos os nodos cujos endereços*)
-    (*são conhecidos*)
+    (* Quando um nodo produz uma transação, esta será propagada para todos os seus pares — ou seja, todos os nodos cujos endereços são conhecidos. *)
     | TxT tx -> (st, emitBroadcast st.id st.peers (TxMsg tx))
     
-    (*quando um nodo vai tentar minerar o proximo bloco, para tal presisa da sua maior bc e de todas as trasações validas nessa bc*)
-    (*depois vai ser usado a função de geração de uma prova para o bloco, se não for bem sucedida o nodo não emite nada*)
-    (*caso esta seja bem sussedida, o nodo vai minerar o proximo bloco na bc, se este bloco não for válido na bc do nodo*)
-    (*ele é descardado e nada é emitido, caso contrário se ele for válido então a bt do nodo é estendida com o novo bloco*)
-    (*o conjunto de trasações no nodo é atualizado para eliminar todas as trasações que não são validas para a nova bc e *)
-    (*o bloco é imitido em broadcast para todos os nodos cujos endereços são conhecidos*)
+    (** Quando um nodo tenta minerar o próximo bloco, precisa da sua maior *bc* e de todas as transações válidas nessa *bc*.
+    De seguida, é utilizada a função de geração de uma prova para o bloco. Se esta não for bem-sucedida, o nodo não emite nada.
+    Caso seja bem-sucedida, o nodo tenta minerar o próximo bloco na *bc*. Se este bloco não for válido na *bc* do nodo,
+    ele é descartado e nada é emitido. Caso contrário, se for válido, a *bt* do nodo é estendida com o novo bloco,
+    o conjunto de transações do nodo é actualizado para remover todas as transações que deixaram de ser válidas para a nova *bc*,
+    e o bloco é emitido em *broadcast* para todos os nodos cujos endereços são conhecidos. *)
     | MintT -> let bc = bfChain st.blockTree
       	       in let allowedTxs = filterTxBC st.txPool bc 
 	       in match (genProof bc allowedTxs ts) with
@@ -302,8 +301,7 @@ use export estatica.BfExtendCompute
 		      	       	      in let b = { prev=hashB prevBlock ; txs=txs ; pf=pf } 
 				      in if valid_chain_block bc b then
 				           let newBf = bfExtend st.blockTree b
-					   in let newPool = filterTxBC st.txPool (bfChain newBf) 
-					   (* in let ownHashes = dom newBf ++ mapTxH newPool  *)
+					   in let newPool = filterTxBC st.txPool (bfChain newBf)
 					   in (mkSt st.id st.peers newBf newPool,
 					       emitBroadcast st.id st.peers (BlockMsg b))
 				         else (st, emitZero)
@@ -312,7 +310,6 @@ use export estatica.BfExtendCompute
     end
 
 end
-
 
 
 module ConsensusNetwork
@@ -350,8 +347,8 @@ module ConsensusNetwork
       | Cons pack lpt -> if eqp pack p then lpt else Cons pack (remP p lpt)
   end
 
-  (* garantir que o destinatário é o allowed e que pertence no sistema, temos também de garantir que o pacote está nas mensagens a*)
-  (* enviar bem como verifica que não á colisões com um bloco a adicionar e bt do nodo *)
+  (* garantir que o destinatário é o allowed e que pertence no sistema, temos também de garantir que o pacote está nas mensagens a
+  enviar bem como verifica que não á colisões com um bloco a adicionar e bt do nodo *)
   predicate procMsg_enbld_glbl (w:world) (allowed:address) (ts:time) (p:packet) = 
     mem allowed w.lSt /\ p.dst = allowed /\ LMem.mem p w.inFlightMsgs /\ mem p.src w.lSt
       /\ procMsg_enbld (find p.dst w.lSt) p.src p.msg ts 
@@ -369,8 +366,8 @@ module ConsensusNetwork
 	 consumedMsgs = w.consumedMsgs ++ (Cons p Nil) } (*pomos a mensagem lida na lista da mensagem lidas*)
 
 
-  (* garantir que o proprio nodo é o allowed e que pertence no sistema e*)
-  (*vai returnar true se ou tr não é MinT, se não consegui gerar um bloco e se não aja colisões com o bloco gerado e a bt do nodo*)
+  (* garantir que o proprio nodo é o allowed e que pertence no sistema e
+  vai returnar true se ou tr não é MinT, se não consegui gerar um bloco e se não aja colisões com o bloco gerado e a bt do nodo*)
   predicate procInt_enbld_glbl (w:world) (allowed:address) (ts:time) (tr:intnlTx) =
     mem allowed w.lSt /\ procInt_enbld (find allowed w.lSt) tr ts
     
@@ -406,8 +403,7 @@ module ConsensusNetwork
     
   let ghost predicate initWorld (w:world) = initWorld_p w
 
-  (* Proof of inductiveness
-   *)
+  (* Proof of inductiveness*)
   clone export inductiveness.Inductiveness with
     type world,
     predicate inv=inv_glbl,

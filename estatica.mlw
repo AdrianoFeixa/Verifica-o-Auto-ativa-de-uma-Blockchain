@@ -786,11 +786,9 @@ module BfExtend
   lemma btExtend_idemp : forall bf :bforest, b :block.
     noCollision bf b -> bfExtend bf b = bfExtend (bfExtend bf b) b
   
-  (*...*)
   lemma btExtend_idemp1 : forall bf :bforest, b :block.
     hasBlock bf b -> bfExtend bf b = bf
 
-  (*...*)
   lemma btAdd_comm : forall  bf :bforest, h1 h2 :hash, b1 b2 :block.
     (h1 = h2 -> b1 = b2) -> add h2 b2 (add h1 b1 bf) == add h1 b1 (add h2 b2 bf)
 
