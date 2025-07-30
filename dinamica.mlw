@@ -316,18 +316,18 @@ module ConsensusNetwork
 
   use export Protocol
   
-  (*sistema de blockchain*)
+  (* Sistema de blockchain. *)
   type blockchain_sistem = fmap address state
 
   (*Conf*)
   type world = { lSt : blockchain_sistem ; inFlightMsgs : list packet ; consumedMsgs : list packet }
   
-  (*os nodos são sempre os mesmos em todos os mundo apenas o seu estado é alterado*)
+  (* Os nodos são sempre os mesmos em todos os mundos; apenas o seu estado é alterado. *)
   axiom constant_nodes: forall a:address, w1 w2: world. mem a w1.lSt <-> mem a w2.lSt 
   
   
-  (*invariante do sistema de blockchain*)
-  (*invariante provada no ficehiro Network*)
+  (* Invariante do sistema de blockchain. *)
+  (* Invariante provada no ficheiro Network em Coq. *)
   predicate inv_glbl (w:world) =
     (forall a :address. mem a w.lSt -> let st = find a w.lSt in inv st /\ st.id = a)
     
@@ -335,7 +335,7 @@ module ConsensusNetwork
     
     ( forall p :packet. LMem.mem p w.inFlightMsgs \/ LMem.mem p w.consumedMsgs -> mem p.src w.lSt /\ mem p.dst w.lSt ) (*não podemos enviar pacotes para nodos fora do sistema*)
 
-  (*função que elimina pacotes  das listas das mensaguens lidas e a serem enviadas*)
+  (* Função que elimina pacotes das listas de mensagens lidas e a enviar. *)
   let rec ghost function remP (p:packet) (lp:list packet) : list packet
   
     ensures {forall pack :packet. LMem.mem pack result -> LMem.mem pack lp }
@@ -347,27 +347,27 @@ module ConsensusNetwork
       | Cons pack lpt -> if eqp pack p then lpt else Cons pack (remP p lpt)
   end
 
-  (* garantir que o destinatário é o allowed e que pertence no sistema, temos também de garantir que o pacote está nas mensagens a
-  enviar bem como verifica que não á colisões com um bloco a adicionar e bt do nodo *)
+  (* Garante que o destinatário é o *allowed* e que pertence ao sistema; também garante que o pacote está nas mensagens a enviar,
+   bem como verifica que não há colisões com um bloco a adicionar à bt do nodo. *)
   predicate procMsg_enbld_glbl (w:world) (allowed:address) (ts:time) (p:packet) = 
     mem allowed w.lSt /\ p.dst = allowed /\ LMem.mem p w.inFlightMsgs /\ mem p.src w.lSt
       /\ procMsg_enbld (find p.dst w.lSt) p.src p.msg ts 
 
-  (*faz com que um nodo do sistema realise um passo de ler uma mensaguem e enviar mensaguens para os outros*)
+  (* Faz com que um nodo do sistema realize um passo: ler uma mensagem e enviar mensagens para os outros. *)
   let ghost function procMsg_glbl (w:world) (allowed:address) (ts:time) (p:packet) : world
     
     requires { procMsg_enbld_glbl w allowed ts p }
 
-    ensures  {inv_glbl w -> inv_glbl result } (*a invariante de mundo é sempre verdadeira*)
+    ensures  {inv_glbl w -> inv_glbl result } (* A invariante de mundo é sempre verdadeira. *)
   
-  = let (st',msgs) = procMsg (find (p.dst) w.lSt) p.src p.msg ts (*criar o novo estado do nodo que recebeu a mensagem*)
-    in { lSt = add p.dst st' w.lSt ; (*atualizar todos os nodos do sistema*)
-       	 inFlightMsgs = (remP p w.inFlightMsgs) ++ msgs; (*a colocar todas as mensaguem produzidas depois de interpretar a mensaguem e a retirar a mensaguem lida*)
-	 consumedMsgs = w.consumedMsgs ++ (Cons p Nil) } (*pomos a mensagem lida na lista da mensagem lidas*)
+  = let (st',msgs) = procMsg (find (p.dst) w.lSt) p.src p.msg ts (* Criar o novo estado do nodo que recebeu a mensagem. *)
+    in { lSt = add p.dst st' w.lSt ; (* Atualizar todos os nodos do sistema. *)
+       	 inFlightMsgs = (remP p w.inFlightMsgs) ++ msgs; (* Colocar todas as mensagens produzidas após interpretar a mensagem, e remover a mensagem lida. *)
+	 consumedMsgs = w.consumedMsgs ++ (Cons p Nil) } (* Colocamos a mensagem lida na lista de mensagens lidas. *)
 
 
-  (* garantir que o proprio nodo é o allowed e que pertence no sistema e
-  vai returnar true se ou tr não é MinT, se não consegui gerar um bloco e se não aja colisões com o bloco gerado e a bt do nodo*)
+  (* Garante que o próprio nodo é o *allowed* e que pertence ao sistema.
+   Vai retornar *true* se tr não for *MinT*, se não conseguir gerar um bloco, e se não houver colisões com o bloco gerado e a bt do nodo. *)
   predicate procInt_enbld_glbl (w:world) (allowed:address) (ts:time) (tr:intnlTx) =
     mem allowed w.lSt /\ procInt_enbld (find allowed w.lSt) tr ts
     
@@ -375,27 +375,27 @@ module ConsensusNetwork
     
     requires { procInt_enbld_glbl w allowed ts tr }
 
-    ensures  { inv_glbl w -> inv_glbl result } (*a invariante de mundo é sempre verdadeira*)
+    ensures  { inv_glbl w -> inv_glbl result } (* A invariante de mundo é sempre verdadeira. *)
   
   = let (st',msgs) = procInt (find allowed w.lSt) tr ts
-    in { lSt = add allowed st' w.lSt ; (*atualizar o mapa de nodos com o seu novo estado interno*)
-       	 inFlightMsgs = msgs ++ w.inFlightMsgs ; (*colucar as mensaguens produzidas na lista delas*)
-	 consumedMsgs = w.consumedMsgs }(*nenhuma mensaguem é consumida*)
+    in { lSt = add allowed st' w.lSt ; (* Atualizar o mapa de nodos com o seu novo estado interno. *)
+       	 inFlightMsgs = msgs ++ w.inFlightMsgs ; (* Colocar as mensagens produzidas na lista correspondente. *)
+	 consumedMsgs = w.consumedMsgs } (* Nenhuma mensagem é consumida. *)
 
   inductive stepind world world =
 
-  | deliver : forall w :world, allowed :address, ts :time, p :packet. (*receber uma mensaguem e ela*)
+  | deliver : forall w :world, allowed :address, ts :time, p :packet. (* Receber uma mensagem e processá-la. *)
                 procMsg_enbld_glbl w allowed ts p ->
 		  stepind w (procMsg_glbl w allowed ts p)
   
-  | intern : forall w :world, allowed :address, ts :time, tr :intnlTx. (*fazer uma trasição interna*)
+  | intern : forall w :world, allowed :address, ts :time, tr :intnlTx. (* Fazer uma transição interna. *)
                 procInt_enbld_glbl w allowed ts tr ->
 		  stepind w (procInt_glbl w allowed ts tr)
 
 
   let ghost predicate step (st1:world) (st2:world) = stepind st1 st2 
   
-  (*estado inicial do mundo*)
+  (* Estado inicial do mundo. *)
   predicate initWorld_p (w:world) =
     (forall a :address. mem a w.lSt -> find a w.lSt = init a)
     /\ is_nil w.inFlightMsgs
