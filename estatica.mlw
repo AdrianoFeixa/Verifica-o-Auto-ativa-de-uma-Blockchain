@@ -1,68 +1,58 @@
-(*Marcado como `ghost` porque é usado apenas para raciocínio lógico 
-  e não afeta o código executável. *)
-
-(*é o ficheiro types*)
+(*este modulo foi inspirado no ficheiro types do COQ*)
 module Types
   use export int.Int
   use export list.List
   use export fmap.Fmap
   
-  (*tipo de uma hash de um bloco*)
+ (* tipo de hash de um bloco *)
   type hash
 
-  (* A equivalência entre hashes significa que elas são iguais *)
-  (*predicado da linguagem da programação; amarra a igualdade de ptogramas é igual na igualdade lógica*)
   val predicate eqh (h1:hash) (h2:hash)
     ensures { result <-> h1 = h2 }
   
-  (*transação de um bloco*)
+  (* transação de um bloco *)
   type tx
   
-  (*resultado de resolver o problema dificil, é a prova de segurança do bloco*)
+  (* resultado de resolver o problema difícil, a prova de segurança do bloco *)
   type proof
   
-  (*periudo de tempo que o bloco foi criado*)
+  (* período de tempo em que o bloco foi criado *)
   type time = int
   
   (*endereço de um bloco*)
   type addr = int
   
-  (*bloco de um sistema de blockchain*)
+  (* bloco de um sistema de blockchain *)
   type block = { prev : hash ; txs : list tx ; pf : proof }
   
-  (*equivalencia entre dois blocos eles são iguais ses 
-   todas as suas compunentes também o forem*)
+ (* equivalência entre dois blocos: são iguais se todas as suas componentes também o forem *)
   val predicate eqb (b1:block) (b2:block)
-    (* ensures { result <-> b1 = b2 } *)
     ensures { result <-> b1.prev = b2.prev /\ b1.txs = b2.txs /\ b1.pf = b2.pf }
 
-  (*isto aqui é a blockchain do Coq*)
+  (* esta é a blockchain em Coq *)
   type chain = list block
 
-  (* type bforest = fmap hash (list block) *)
-  (*é o tipo btree no codigo*)
+ (* type bforest = fmap hash (list block) *)
+(* corresponde ao tipo btree no código *)
   type bforest = fmap hash block
   
-  (*sequencia de transações*)
+  (* sequência de transações *)
   type txpool = list tx
   
-  (*avaliar se tx é valido em bforest e se for adicionalo a txpool ???*)
   val tpExtend (txpool) (bforest) (tx) : txpool
 
 end
 
-(*ficheiro parameters*)
+(*este modulo foi inspirado no ficheiro parameters do COQ*)
 module Parameters
   use Types
-  (* use bool.Bool *)
   use export option.Option
   use export list.Append
   use export list.FoldLeft
   use export list.FoldRight
   use list.Mem as LMem
 
-  
-  (*é o bloco inicial não tem trasaçoes*)
+  (*é o bloco inicial não tem trasações*)
   val ghost constant gBlock : block
     ensures { result.txs = Nil }
 
@@ -92,7 +82,6 @@ module Parameters
   transações e um determinado periudo de tempo ou não gera nada se a chain for
   invalida*)
   val ghost function genProof (chain) (txpool) (time) : option (txpool, proof)
-(* Parameter genProof : Blockchain -> TxPool -> Timestamp -> option (TxPool * ). *)
   
   (*escolhe a chain maior das duas dadas*)
   val ghost predicate fcr (c1:chain) (c2:chain)
@@ -112,7 +101,6 @@ module Parameters
   val ghost predicate vafP (proof) (time) (chain)
 
   (*ok está a dizer que é o ultimo bloco é semelhante a isto no Coq:*)
-  (*Definition bcLast (bc : Blockchain) := last GenesisBlock bc.*)
   lemma gBlock_hash : gBlock.prev = hashB gBlock
   
   (*o gblock não tem trasações*)
@@ -137,8 +125,6 @@ module Parameters
   lemma fcr_subchain: forall bc1 bc2 :chain. subchain bc1 bc2 -> bc2 = bc1 \/ fcr bc2 bc1
   
   lemma txValidNil : forall t :tx. txValid t Nil
-  
-  (*está no Forets Coq mesmo no inicio:*)
 
   (*c1 >= c2*)
   predicate fcreq (c1:chain) (c2:chain) =
@@ -306,9 +292,6 @@ module BlockTreeProperties
   use Parameters
   use Forests
 
-  (* Since all hashes in lh are guaranteed to be in bf, 
-     get_block always resturns (find h bf) here
-   *)
   let rec ghost function all_blocks_aux (bf:bforest) (lh:list hash) : list block
     requires { forall h:hash. LMem.mem h lh -> mem h bf }
     ensures  { forall h:hash. LMem.mem h lh -> get_block bf h = find h bf /\ LMem.mem (get_block bf h) result }
@@ -414,7 +397,7 @@ module BlockTreeProperties
 
 
   let rec ghost function compute_chain_aux (bf:bforest) (b:block) (remaining:list hash) (n:int) : chain
-    requires { remaining = dom bf /\ distinct remaining /\ n = size bf = length remaining }(*obvio*)
+    requires { remaining = dom bf /\ distinct remaining /\ n = size bf = length remaining }
     
     ensures  { LMem.mem (hashB b) remaining /\ hasBlock bf b /\ n > 0 -> exists c :chain. result = c++(Cons b Nil) }(*se tudo correr bem então o resultado é a bc até b*)
     
@@ -902,9 +885,6 @@ module BfExtendCompute
     ensures  { forall h :hash. LMem.mem h d' -> LMem.mem h d \/ h = hashB x }
     ensures  { forall a :block. hasBlock bf' a <->  hasBlock bf a \/ a = x }
   = ()
-
-  (* If x and b have the same hash value, remove and add do not commute!
-   *)
  
  let lemma rm_add_lm (bf bf' bfrb bfrb' :bforest) (x b:block)
     requires { bf' = add (hashB x) x bf }
